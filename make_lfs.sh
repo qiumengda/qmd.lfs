@@ -6,12 +6,45 @@
 SOURCE_TAR=$PWD/source_tars
 TOOLS_SRC=$PWD/tools_srcs
 SYSTEM_SRC=$PWD/system_srcs
-TOOLS_INSTALL=$PWD/../tools
-ROOTFS_INSTALL=$PWD/../rootfs
-MAKE_SKIP_CHECK=yes
+TOOLS_INSTALL=$(dirname $PWD)/tools
+SYSTEM_INSTALL=$(dirname $PWD)/system
+BUILD_INSTALL=$(dirname $PWD)/build
+ROOTFS=$SYSTEM_INSTALL
+
+MAKE_DOC=yes
+MAKE_CHECK=yes
 MAKE_FLAGS=-j4
 
-export LFS=/mnt/lfs
+LFS_TGT=$(uname -m)-lfs-linux-gnu
+
+function print_env()
+{
+	echo SOURCE_TAR=$SOURCE_TAR
+	echo TOOLS_SRC=$TOOLS_SRC
+	echo SYSTEM_SRC=$SYSTEM_SRC
+	echo TOOLS_INSTALL=$TOOLS_INSTALL
+	echo SYSTEM_INSTALL=$SYSTEM_INSTALL
+	echo BUILD_INSTALL=$BUILD_INSTALL
+	echo ROOTFS=$ROOTFS
+	echo MAKE_CHECK=$MAKE_CHECK
+	echo MAKE_FLAGS=$MAKE_FLAGS
+
+	for dir in $ROOTFS/build  \
+		$ROOTFS/tools     \
+		$ROOTFS/dev       \
+		$ROOTFS/dev/pts   \
+		$ROOTFS/proc      \
+		$ROOTFS/sys       \
+		$ROOTFS/run;
+	do
+		if grep -q "$dir" /proc/mounts; then
+			printf "%-32s mounted\n" $dir
+		else
+			printf "%-32s umounted\n" $dir
+		fi
+	done
+
+}
 
 function create_disk()
 {
@@ -85,48 +118,272 @@ EOF
 	#sudo swapon -v /dev/sdb2
 	#sudo chmod -v a+wt $LFS/sources
 
-	if [ ! -d $LFS/tools ]; then
-		mkdir -vp $LFS/tools
-	fi
-
-	if [ ! -f /tools ]; then
-		ln -sv $LFS/tools /
-	fi
-
-	case $(uname -m) in
-		x86_64)
-			mkdir -v /tools/lib
-			ln -sv lib /tools/lib64 
-		;;
-	esac
-
 	#sudo chown -vR $LFS
 }
 
-function create_srcs()
+function make_dirs()
 {
-	if [ -d $SOURCE_TAR ]; then
-		rm -vrf $SOURCE_TAR
+	if [ "$1" == "mount" ]; then
+		make_memfs
+		exit
+	elif [ "$1" == "umount" ]; then
+		make_memfs clean
+		exit
 	fi
-	mkdir -v $SOURCE_TAR
 
-	if [ -d $TOOLS_SRC ]; then
-		rm -vrf $TOOLS_SRC
+	if [ ! -d $SOURCE_TAR ]; then
+		mkdir -v $SOURCE_TAR
+		tar -xvf lfs-packages-7.7-systemd.tar -C $SOURCE_TAR
 	fi
-	mkdir -v $TOOLS_SRC
 
-	if [ -d $SYSTEM_SRC ]; then
-		rm -vrf $SYSTEM_SRC
+	if [ ! -d $TOOLS_SRC ]; then
+		mkdir -v $TOOLS_SRC
 	fi
-	mkdir -v $SYSTEM_SRC
 
-	tar -xvf lfs-packages-7.7-systemd.tar -C $SOURCE_TAR
-	#wget --input-file=wget-list --continue --directory-prefix=$LFS/sources
-	#pushd $LFS/sources
-	#md5sum -c md5sums
-	#popd
+	if [ ! -d $SYSTEM_SRC ]; then
+		mkdir -v $SYSTEM_SRC
+	fi
 
-	#sudo chown -vR $SOURCE_TAR
+	if [ ! -d $TOOLS_INSTALL ]; then
+		mkdir -v $TOOLS_INSTALL
+	fi
+
+	if [ ! -d $SYSTEM_INSTALL ]; then
+		mkdir -v $SYSTEM_INSTALL
+	fi
+
+	if [ ! -d $SYSTEM_INSTALL/build ]; then
+		mkdir -v $SYSTEM_INSTALL/build
+	fi
+
+	if [ ! -d $SYSTEM_INSTALL/tools ]; then
+		mkdir -v $SYSTEM_INSTALL/tools
+	fi
+
+	if [ ! -L /tools ]; then
+		sudo ln -sv $TOOLS_INSTALL /tools
+	fi
+
+	if [ ! -d /tools/lib ]; then
+		mkdir -v /tools/lib
+	fi
+
+	case $(uname -m) in
+	x86_64)
+		if [ ! -L /tools/lib64 ]; then
+			ln -sv lib /tools/lib64 
+		fi
+		;;
+	esac
+
+	make_rootfs
+	make_memfs
+}
+
+function make_rootfs_clean()
+{
+	if [ -d /build ]; then
+		echo  "You must be host"
+		exit
+	fi
+
+	cd $SYSTEM_INSTALL
+	sudo rm -vrf bin boot dev etc home lib media mnt opt proc root run sbin srv sys tmp usr var
+	case $(uname -m) in
+	x86_64)
+		sudo rm -vrf lib64
+		;;
+	esac
+	cd -
+}
+
+function make_rootfs()
+{
+	echo "make_rootfs $1"
+	if [ -d /build ]; then
+		echo  "You must be host"
+		exit
+	fi
+
+	if [ "$1" == "clean" ]; then
+		make_rootfs_clean
+		exit
+	fi
+
+	echo "make rootfs FHS"
+
+	cd $SYSTEM_INSTALL
+
+	# root dir
+	sudo mkdir -pv bin boot dev etc home lib media mnt opt proc root run sbin srv sys tmp usr var
+	sudo mkdir -pv etc/{opt,sysconfig}
+	sudo mkdir -pv lib/firmware
+	sudo mkdir -pv media/{floppy,cdrom}
+	sudo mkdir -pv usr/{,local/}{bin,include,lib,sbin,src}
+	sudo mkdir -pv usr/{,local/}share/{color,dict,doc,info,locale,man}
+	sudo mkdir -pv usr/{,local/}share/{misc,terminfo,zoneinfo}
+	sudo mkdir -pv usr/{,local/}share/man/man{1..8}
+	sudo mkdir -pv usr/libexec
+	sudo mkdir -pv var/{log,mail,spool}
+	sudo mkdir -pv var/{opt,cache,lib/{color,misc,locate},local}
+	case $(uname -m) in
+	x86_64)
+		sudo ln -svf lib lib64
+		sudo ln -svf lib usr/lib64
+		sudo ln -svf lib usr/local/lib64 
+		;;
+	esac
+	sudo ln -svf /run var/run
+	sudo ln -svf /run/lock var/lock
+	sudo install -dv -m 0750 root
+	sudo install -dv -m 1777 tmp var/tmp
+
+	sudo ln -svf /tools/bin/{bash,cat,echo,pwd,stty} bin
+	sudo ln -svf /tools/bin/perl usr/bin
+	sudo ln -svf /tools/lib/libgcc_s.so{,.1} usr/lib
+	sudo ln -svf /tools/lib/libstdc++.so{,.6} usr/lib
+	sudo ln -svf /proc/self/mounts etc/mtab
+	sudo ln -svf bash bin/sh
+
+	sudo mknod -m 600 $ROOTFS/dev/console c 5 1
+	sudo mknod -m 666 $ROOTFS/dev/null c 1 3
+
+	sudo bash -c "sed 's/tools/usr/' /tools/lib/libstdc++.la > usr/lib/libstdc++.la"
+
+	sudo bash -c "cat > etc/passwd << EOF
+root:x:0:0:root:/root:/bin/bash
+bin:x:1:1:bin:/dev/null:/bin/false
+daemon:x:6:6:Daemon User:/dev/null:/bin/false
+messagebus:x:18:18:D-Bus Message Daemon User:/var/run/dbus:/bin/false
+systemd-bus-proxy:x:72:72:systemd Bus Proxy:/:/bin/false
+systemd-journal-gateway:x:73:73:systemd Journal Gateway:/:/bin/false
+systemd-journal-remote:x:74:74:systemd Journal Remote:/:/bin/false
+systemd-journal-upload:x:75:75:systemd Journal Upload:/:/bin/false
+systemd-network:x:76:76:systemd Network Management:/:/bin/false
+systemd-resolve:x:77:77:systemd Resolver:/:/bin/false
+systemd-timesync:x:78:78:systemd Time Synchronization:/:/bin/false
+nobody:x:99:99:Unprivileged User:/dev/null:/bin/false
+EOF"
+
+	sudo bash -c "cat > etc/group << EOF
+root:x:0:
+bin:x:1:daemon
+sys:x:2:
+kmem:x:3:
+tape:x:4:
+tty:x:5:
+daemon:x:6:
+floppy:x:7:
+disk:x:8:
+lp:x:9:
+dialout:x:10:
+audio:x:11:
+video:x:12:
+utmp:x:13:
+usb:x:14:
+cdrom:x:15:
+adm:x:16:
+messagebus:x:18:
+systemd-journal:x:23:
+input:x:24:
+mail:x:34:
+systemd-bus-proxy:x:72:
+systemd-journal-gateway:x:73:
+systemd-journal-remote:x:74:
+systemd-journal-upload:x:75:
+systemd-network:x:76:
+systemd-resolve:x:77:
+systemd-timesync:x:78:
+nogroup:x:99:
+users:x:999:
+EOF"
+
+	#exec tools/bin/bash --login +h
+
+	sudo touch var/log/{btmp,lastlog,wtmp}
+	sudo chgrp -v utmp var/log/lastlog
+	sudo chmod -v 664  var/log/lastlog
+	sudo chmod -v 600  var/log/btmp
+
+	cd -
+}
+
+function make_memfs()
+{
+	for dir in $ROOTFS/build  \
+		$ROOTFS/tools     \
+		$ROOTFS/dev       \
+		$ROOTFS/dev/pts   \
+		$ROOTFS/proc      \
+		$ROOTFS/sys       \
+		$ROOTFS/run;
+	do
+		if [ "$1" == "clean" ]; then
+			if grep -q "$dir" /proc/mounts; then
+				if [ $dir == $ROOTFS/dev ]; then
+					sudo umount -v $dir/pts
+				fi
+				sudo umount -v $dir
+			else
+				printf "%-32s already umounted\n" $dir
+			fi
+			continue
+		fi
+
+		if grep -q "$dir" /proc/mounts; then
+			printf "%-32s already mounted\n" $dir
+			continue
+		fi
+
+		if [ ! -d $dir ]; then
+			echo "$dir not exists"
+			continue
+		fi
+
+		case "$dir" in
+		"$ROOTFS/build")
+			sudo mount -v --bind $BUILD_INSTALL $dir
+			;;
+		"$ROOTFS/tools")
+			sudo mount -v --bind $TOOLS_INSTALL $dir
+			;;
+		"$ROOTFS/dev")
+			sudo mount -v --bind /dev $dir
+			;;
+		"$ROOTFS/dev/pts")
+			sudo mount -vt devpts devpts $dir -o gid=5,mode=620
+			;;
+		"$ROOTFS/proc")
+			sudo mount -vt proc proc $dir
+			;;
+		"$ROOTFS/sys")
+			sudo mount -vt sysfs sysfs $dir
+			;;
+		"$ROOTFS/run")
+			sudo mount -vt tmpfs tmpfs $dir
+			;;
+		esac
+	done
+
+	if [ -h $ROOTFS/dev/shm ]; then
+		dir=$ROOTFS/$(readlink $ROOTFS/dev/shm)
+		if [ ! -d $dir ]; then
+			sudo mkdir -vp $dir
+		fi
+	fi
+}
+
+function make_clean()
+{
+	echo make clean
+
+	make_memfs clean
+	rm -vrf $SOURCE_TAR
+	rm -vrf $TOOLS_SRC
+	rm -vrf $SYSTEM_SRC
+	sudo rm -vrf $TOOLS_INSTALL
+	sudo rm -vrf $SYSTEM_INSTALL
+	sudo rm -vf /tools
 }
 
 function make_tools_binutils_1st()
@@ -148,7 +405,7 @@ function make_tools_binutils_1st()
 	cd $build
 	../$app-1st/configure              \
 		--prefix=/tools            \
-		--with-sysroot=$LFS        \
+		--with-sysroot=$ROOTFS     \
 		--with-lib-path=/tools/lib \
 		--target=$LFS_TGT          \
 		--disable-nls              \
@@ -156,7 +413,7 @@ function make_tools_binutils_1st()
 	if [ $? != 0 ]; then
 		echo fail; exit
 	fi
-	make
+	make $MAKE_FLAGS
 	if [ $? != 0 ]; then
 		echo fail; exit
 	fi
@@ -197,7 +454,7 @@ function make_tools_binutils_2nd()
 	if [ $? != 0 ]; then
 		echo fail; exit
 	fi
-	make
+	make $MAKE_FLAGS
 	if [ $? != 0 ]; then
 		echo fail; exit
 	fi
@@ -260,7 +517,7 @@ function make_tools_gcc_1st()
 	../$app-1st/configure                                  \
 		--target=$LFS_TGT                              \
 		--prefix=/tools                                \
-		--with-sysroot=$LFS                            \
+		--with-sysroot=$ROOTFS                         \
 		--with-newlib                                  \
 		--without-headers                              \
 		--with-local-prefix=/tools                     \
@@ -283,7 +540,7 @@ function make_tools_gcc_1st()
 	if [ $? != 0 ]; then
 		echo fail; exit
 	fi
-	make
+	make $MAKE_FLAGS
 	if [ $? != 0 ]; then
 		echo fail; exit
 	fi
@@ -356,7 +613,7 @@ function make_tools_gcc_2nd()
 	if [ $? != 0 ]; then
 		echo fail; exit
 	fi
-	make
+	make $MAKE_FLAGS
 	if [ $? != 0 ]; then
 		echo fail; exit
 	fi
@@ -404,7 +661,7 @@ function make_tools_libstdcxx()
 	if [ $? != 0 ]; then
 		echo fail; exit
 	fi
-	make
+	make $MAKE_FLAGS
 	if [ $? != 0 ]; then
 		echo fail; exit
 	fi
@@ -513,7 +770,7 @@ function make_tools_tcl()
 	if [ $? != 0 ]; then
 		echo fail; exit
 	fi
-	if [ "$MAKE_SKIP_CHECK" != "yes"]; then
+	if [ "$MAKE_CHECK" == "yes"]; then
 		TZ=UTC make test
 		if [ $? != 0 ]; then
 			echo fail; exit
@@ -558,7 +815,7 @@ function make_tools_expect()
 	if [ $? != 0 ]; then
 		echo fail; exit
 	fi
-	if [ "$MAKE_SKIP_CHECK" != "yes"]; then
+	if [ "$MAKE_CHECK" == "yes"]; then
 		make test
 		if [ $? != 0 ]; then
 			echo fail; exit
@@ -591,7 +848,7 @@ function make_tools_dejagnu()
 	if [ $? != 0 ]; then
 		echo fail; exit
 	fi
-	if [ "$MAKE_SKIP_CHECK" != "yes"]; then
+	if [ "$MAKE_CHECK" == "yes"]; then
 		make check
 		if [ $? != 0 ]; then
 			echo fail; exit
@@ -620,7 +877,7 @@ function make_tools_check()
 	if [ $? != 0 ]; then
 		echo fail; exit
 	fi
-	if [ "$MAKE_SKIP_CHECK" != "yes"]; then
+	if [ "$MAKE_CHECK" == "yes"]; then
 		make check # use very long time
 		if [ $? != 0 ]; then
 			echo fail; exit
@@ -685,7 +942,7 @@ function make_tools_bash()
 	if [ $? != 0 ]; then
 		echo fail; exit
 	fi
-	if [ "$MAKE_SKIP_CHECK" != "yes"]; then
+	if [ "$MAKE_CHECK" == "yes"]; then
 		make tests
 		if [ $? != 0 ]; then
 			echo fail; exit
@@ -742,7 +999,7 @@ function make_tools_coreutils()
 	if [ $? != 0 ]; then
 		echo fail; exit
 	fi
-	if [ "$MAKE_SKIP_CHECK" != "yes"]; then
+	if [ "$MAKE_CHECK" == "yes"]; then
 		make RUN_EXPENSIVE_TESTS=yes check
 		if [ $? != 0 ]; then
 			echo fail; exit
@@ -775,7 +1032,7 @@ function make_tools_diffutils()
 	if [ $? != 0 ]; then
 		echo fail; exit
 	fi
-	if [ "$MAKE_SKIP_CHECK" != "yes"]; then
+	if [ "$MAKE_CHECK" == "yes"]; then
 		make check
 		if [ $? != 0 ]; then
 			echo fail; exit
@@ -808,7 +1065,7 @@ function make_tools_file()
 	if [ $? != 0 ]; then
 		echo fail; exit
 	fi
-	if [ "$MAKE_SKIP_CHECK" != "yes"]; then
+	if [ "$MAKE_CHECK" == "yes"]; then
 		make check
 		if [ $? != 0 ]; then
 			echo fail; exit
@@ -841,7 +1098,7 @@ function make_tools_findutils()
 	if [ $? != 0 ]; then
 		echo fail; exit
 	fi
-	if [ "$MAKE_SKIP_CHECK" != "yes"]; then
+	if [ "$MAKE_CHECK" == "yes"]; then
 		make check
 		if [ $? != 0 ]; then
 			echo fail; exit
@@ -874,7 +1131,7 @@ function make_tools_gawk()
 	if [ $? != 0 ]; then
 		echo fail; exit
 	fi
-	if [ "$MAKE_SKIP_CHECK" != "yes"]; then
+	if [ "$MAKE_CHECK" == "yes"]; then
 		make check
 		if [ $? != 0 ]; then
 			echo fail; exit
@@ -935,7 +1192,7 @@ function make_tools_grep()
 	if [ $? != 0 ]; then
 		echo fail; exit
 	fi
-	if [ "$MAKE_SKIP_CHECK" != "yes"]; then
+	if [ "$MAKE_CHECK" == "yes"]; then
 		make check
 		if [ $? != 0 ]; then
 			echo fail; exit
@@ -968,7 +1225,7 @@ function make_tools_gzip()
 	if [ $? != 0 ]; then
 		echo fail; exit
 	fi
-	if [ "$MAKE_SKIP_CHECK" != "yes"]; then
+	if [ "$MAKE_CHECK" == "yes"]; then
 		make check
 		if [ $? != 0 ]; then
 			echo fail; exit
@@ -1001,7 +1258,7 @@ function make_tools_m4()
 	if [ $? != 0 ]; then
 		echo fail; exit
 	fi
-	if [ "$MAKE_SKIP_CHECK" != "yes"]; then
+	if [ "$MAKE_CHECK" == "yes"]; then
 		make check
 		if [ $? != 0 ]; then
 			echo fail; exit
@@ -1034,7 +1291,7 @@ function make_tools_make()
 	if [ $? != 0 ]; then
 		echo fail; exit
 	fi
-	if [ "$MAKE_SKIP_CHECK" != "yes"]; then
+	if [ "$MAKE_CHECK" == "yes"]; then
 		make check
 		if [ $? != 0 ]; then
 			echo fail; exit
@@ -1067,7 +1324,7 @@ function make_tools_patch()
 	if [ $? != 0 ]; then
 		echo fail; exit
 	fi
-	if [ "$MAKE_SKIP_CHECK" != "yes"]; then
+	if [ "$MAKE_CHECK" == "yes"]; then
 		make check
 		if [ $? != 0 ]; then
 			echo fail; exit
@@ -1126,7 +1383,7 @@ function make_tools_sed()
 	if [ $? != 0 ]; then
 		echo fail; exit
 	fi
-	if [ "$MAKE_SKIP_CHECK" != "yes"]; then
+	if [ "$MAKE_CHECK" == "yes"]; then
 		make check
 		if [ $? != 0 ]; then
 			echo fail; exit
@@ -1159,7 +1416,7 @@ function make_tools_tar()
 	if [ $? != 0 ]; then
 		echo fail; exit
 	fi
-	if [ "$MAKE_SKIP_CHECK" != "yes"]; then
+	if [ "$MAKE_CHECK" == "yes"]; then
 		make check
 		if [ $? != 0 ]; then
 			echo fail; exit
@@ -1192,7 +1449,7 @@ function make_tools_texinfo()
 	if [ $? != 0 ]; then
 		echo fail; exit
 	fi
-	if [ "$MAKE_SKIP_CHECK" != "yes"]; then
+	if [ "$MAKE_CHECK" == "yes"]; then
 		make check
 		if [ $? != 0 ]; then
 			echo fail; exit
@@ -1256,7 +1513,7 @@ function make_tools_xz()
 	if [ $? != 0 ]; then
 		echo fail; exit
 	fi
-	if [ "$MAKE_SKIP_CHECK" != "yes"]; then
+	if [ "$MAKE_CHECK" == "yes"]; then
 		make check
 		if [ $? != 0 ]; then
 			echo fail; exit
@@ -1274,8 +1531,8 @@ function make_tools_clean()
 	rm -vrf $TOOLS_SRC
 	mkdir -v $TOOLS_SRC
 
-	sudo rm -vrf $LFS/tools
-	mkdir -v $LFS/tools
+	sudo rm -vrf $ROOTFS/tools
+	mkdir -v $ROOTFS/tools
 
 	case $(uname -m) in
 		x86_64)
@@ -1290,24 +1547,6 @@ function make_tools()
 	if [ "$1" == "clean" ]; then
 		make_tools_clean
 		exit
-	fi
-
-	if [ ! -d $TOOLS_SRC ]; then
-		mkdir -vp $TOOLS_SRC
-	fi
-
-	if [ ! -d $TOOLS_INSTALL ]; then
-		mkdir -vp $TOOLS_INSTALL
-		if [ ! -f /tools ]; then
-			sudo ln -sv $TOOLS_INSTALL /tools
-		fi
-
-		case $(uname -m) in
-			x86_64)
-				mkdir -v /tools/lib
-				ln -sv lib /tools/lib64 
-			;;
-		esac
 	fi
 
 	make_tools_binutils_1st
@@ -1344,166 +1583,9 @@ function make_tools()
 	make_tools_xz
 }
 
-function memfs_mount()
-{
-	mkdir -pv $LFS/{dev,proc,sys,run}
-	sudo mknod -m 600 $LFS/dev/console c 5 1
-	sudo mknod -m 666 $LFS/dev/null c 1 3
-	sudo mount -v --bind /dev $LFS/dev
-	sudo mount -vt devpts devpts $LFS/dev/pts -o gid=5,mode=620
-	if [ -h $LFS/dev/shm ]; then
-		sudo mkdir -vp $LFS/$(readlink $LFS/dev/shm)
-	fi
-	sudo mount -vt proc proc $LFS/proc
-	sudo mount -vt sysfs sysfs $LFS/sys
-	sudo mount -vt tmpfs tmpfs $LFS/run
-}
-
-function memfs_umount()
-{
-	sudo umount -v $LFS/{dev/pts,dev,proc,sys,run}
-}
-
-function make_rootfs_clean()
-{
-	if [ -d /qmd ]; then
-		echo  "You must be host"
-		exit
-	fi
-
-	cd $LFS
-	sudo umount -v dev/pts dev proc sys run
-	sudo rm -vrf bin boot dev etc home lib media mnt opt proc root run sbin srv sys tmp usr var
-	case $(uname -m) in
-	x86_64)
-		sudo rm -vrf lib64
-		;;
-	esac
-	cd -
-}
-
-function make_rootfs()
-{
-	if [ -d /qmd ]; then
-		echo  "You must be host"
-		exit
-	fi
-
-	if [ "$1" == "clean" ]; then
-		make_rootfs_clean
-		exit
-	elif [ "$1" == "mount" ]; then
-		memfs_mount
-		exit
-	elif [ "$1" == "umount" ]; then
-		memfs_umount
-		exit
-	fi
-
-	echo "make rootfs FHS"
-
-	cd $LFS
-	# root dir
-	sudo mkdir -pv bin boot dev etc home lib media mnt opt proc root run sbin srv sys tmp usr var
-	sudo mkdir -pv etc/{opt,sysconfig}
-	sudo mkdir -pv lib/firmware
-	sudo mkdir -pv media/{floppy,cdrom}
-	sudo mkdir -pv usr/{,local/}{bin,include,lib,sbin,src}
-	sudo mkdir -pv usr/{,local/}share/{color,dict,doc,info,locale,man}
-	sudo mkdir -pv usr/{,local/}share/{misc,terminfo,zoneinfo}
-	sudo mkdir -pv usr/{,local/}share/man/man{1..8}
-	sudo mkdir -pv usr/libexec
-	sudo mkdir -pv var/{log,mail,spool}
-	sudo mkdir -pv var/{opt,cache,lib/{color,misc,locate},local}
-	case $(uname -m) in
-	x86_64)
-		sudo ln -sv lib lib64
-		sudo ln -sv lib usr/lib64
-		sudo ln -sv lib usr/local/lib64 
-		;;
-	esac
-	sudo ln -sv /run var/run
-	sudo ln -sv /run/lock var/lock
-	sudo install -dv -m 0750 root
-	sudo install -dv -m 1777 tmp var/tmp
-
-	sudo ln -sv /tools/bin/{bash,cat,echo,pwd,stty} bin
-	sudo ln -sv /tools/bin/perl usr/bin
-	sudo ln -sv /tools/lib/libgcc_s.so{,.1} usr/lib
-	sudo ln -sv /tools/lib/libstdc++.so{,.6} usr/lib
-	sudo ln -sv /proc/self/mounts etc/mtab
-	sudo ln -sv bash bin/sh
-	sudo bash -c "sed 's/tools/usr/' tools/lib/libstdc++.la > usr/lib/libstdc++.la"
-
-	sudo bash -c "cat > etc/passwd << EOF
-root:x:0:0:root:/root:/bin/bash
-bin:x:1:1:bin:/dev/null:/bin/false
-daemon:x:6:6:Daemon User:/dev/null:/bin/false
-messagebus:x:18:18:D-Bus Message Daemon User:/var/run/dbus:/bin/false
-systemd-bus-proxy:x:72:72:systemd Bus Proxy:/:/bin/false
-systemd-journal-gateway:x:73:73:systemd Journal Gateway:/:/bin/false
-systemd-journal-remote:x:74:74:systemd Journal Remote:/:/bin/false
-systemd-journal-upload:x:75:75:systemd Journal Upload:/:/bin/false
-systemd-network:x:76:76:systemd Network Management:/:/bin/false
-systemd-resolve:x:77:77:systemd Resolver:/:/bin/false
-systemd-timesync:x:78:78:systemd Time Synchronization:/:/bin/false
-nobody:x:99:99:Unprivileged User:/dev/null:/bin/false
-EOF"
-
-	sudo bash -c "cat > etc/group << EOF
-root:x:0:
-bin:x:1:daemon
-sys:x:2:
-kmem:x:3:
-tape:x:4:
-tty:x:5:
-daemon:x:6:
-floppy:x:7:
-disk:x:8:
-lp:x:9:
-dialout:x:10:
-audio:x:11:
-video:x:12:
-utmp:x:13:
-usb:x:14:
-cdrom:x:15:
-adm:x:16:
-messagebus:x:18:
-systemd-journal:x:23:
-input:x:24:
-mail:x:34:
-systemd-bus-proxy:x:72:
-systemd-journal-gateway:x:73:
-systemd-journal-remote:x:74:
-systemd-journal-upload:x:75:
-systemd-network:x:76:
-systemd-resolve:x:77:
-systemd-timesync:x:78:
-nogroup:x:99:
-users:x:999:
-EOF"
-
-	#exec tools/bin/bash --login +h
-
-	sudo touch var/log/{btmp,lastlog,wtmp}
-	sudo chgrp -v utmp var/log/lastlog
-	sudo chmod -v 664  var/log/lastlog
-	sudo chmod -v 600  var/log/btmp
-
-	cd -
-}
-
 function change_root()
 {
-	if [ "$1" == "umount" ]; then
-		echo "umount"
-		memfs_umount
-	elif [ "$1" == "mount" ]; then
-		echo "mount"
-		memfs_mount	
-	fi
-	
-	sudo chroot "$LFS" /tools/bin/env -i  \
+	sudo chroot "$ROOTFS" /tools/bin/env -i  \
 		HOME=/root                    \
 		TERM="$TERM"                  \
 		PS1='\u:\w\$ '                \
@@ -1599,7 +1681,7 @@ function make_system_glibc()
 		echo fail; exit
 	fi
 #EOF
-	if [ "$MAKE_SKIP_CHECK" != "yes" ]; then
+	if [ "$MAKE_CHECK" == "yes" ]; then
 		make -i $MAKE_FLAGS check   # Ignore some fail
 		if [ $? != 0 ]; then
 			echo fail; exit
@@ -1736,7 +1818,7 @@ function make_system_zlib()
 	if [ $? != 0 ]; then
 		echo fail; exit
 	fi
-	if [ "$MAKE_SKIP_CHECK" != "yes" ]; then
+	if [ "$MAKE_CHECK" == "yes" ]; then
 		make check
 		if [ $? != 0 ]; then
 			echo fail; exit
@@ -1771,7 +1853,7 @@ function make_system_file()
 	if [ $? != 0 ]; then
 		echo fail; exit
 	fi
-	if [ "$MAKE_SKIP_CHECK" != "yes" ]; then
+	if [ "$MAKE_CHECK" == "yes" ]; then
 		make check
 		if [ $? != 0 ]; then
 			echo fail; exit
@@ -1812,7 +1894,7 @@ function make_system_binutils()
 	if [ $? != 0 ]; then
 		echo fail; exit
 	fi
-	if [ "$MAKE_SKIP_CHECK" != "yes" ]; then
+	if [ "$MAKE_CHECK" == "yes" ]; then
 		make -k $MAKE_FLAGS check
 		if [ $? != 0 ]; then
 			echo fail; exit
@@ -1851,7 +1933,7 @@ function make_system_gmp()
 	if [ $? != 0 ]; then
 		echo fail; exit
 	fi
-	if [ "$MAKE_SKIP_CHECK" != "yes" ]; then
+	if [ "$MAKE_CHECK" == "yes" ]; then
 		make check 2>&1 | tee gmp-check-log
 		if [ $? != 0 ]; then
 			echo fail; exit
@@ -1899,7 +1981,7 @@ function make_system_mpfr()
 	if [ $? != 0 ]; then
 		echo fail; exit
 	fi
-	if [ "$MAKE_SKIP_CHECK" != "yes" ]; then
+	if [ "$MAKE_CHECK" == "yes" ]; then
 		make check
 		if [ $? != 0 ]; then
 			echo fail; exit
@@ -1940,7 +2022,7 @@ function make_system_mpc()
 	if [ $? != 0 ]; then
 		echo fail; exit
 	fi
-	if [ "$MAKE_SKIP_CHECK" != "yes" ]; then
+	if [ "$MAKE_CHECK" == "yes" ]; then
 		make check
 		if [ $? != 0 ]; then
 			echo fail; exit
@@ -1989,7 +2071,7 @@ function make_system_gcc()
 		echo fail; exit
 	fi
 #EOF
-	if [ "$MAKE_SKIP_CHECK" != "yes" ]; then
+	if [ "$MAKE_CHECK" == "yes" ]; then
 		ulimit -s 32768
 		#make -k check
 		make -i $MAKE_FLAGS check
@@ -2107,7 +2189,7 @@ function make_system_pkgconfig()
 	if [ $? != 0 ]; then
 		echo fail; exit
 	fi
-	if [ "$MAKE_SKIP_CHECK" != "yes" ]; then
+	if [ "$MAKE_CHECK" == "yes" ]; then
 		make check
 		if [ $? != 0 ]; then
 			echo fail; exit
@@ -2196,7 +2278,7 @@ function make_system_attr()
 	if [ $? != 0 ]; then
 		echo fail; exit
 	fi
-	if [ "$MAKE_SKIP_CHECK" != "yes" ]; then
+	if [ "$MAKE_CHECK" == "yes" ]; then
 		make -j1 tests root-tests
 		if [ $? != 0 ]; then
 			echo fail; exit
@@ -2297,7 +2379,7 @@ function make_system_sed()
 	if [ $? != 0 ]; then
 		echo fail; exit
 	fi
-	if [ "$MAKE_SKIP_CHECK" != "yes" ]; then
+	if [ "$MAKE_CHECK" == "yes" ]; then
 		make check
 		if [ $? != 0 ]; then
 			echo fail; exit
@@ -2407,7 +2489,7 @@ function make_system_procpsng()
 	if [ $? != 0 ]; then
 		echo fail; exit
 	fi
-	if [ "$MAKE_SKIP_CHECK" != "yes" ]; then
+	if [ "$MAKE_CHECK" == "yes" ]; then
 		sed -i -r 's|(pmap_initname)\\\$|\1|' testsuite/pmap.test/pmap.exp
 		make check
 		if [ $? != 0 ]; then
@@ -2463,7 +2545,7 @@ function make_system_e2fsprogs()
 	if [ $? != 0 ]; then
 		echo fail; exit
 	fi
-	if [ "$MAKE_SKIP_CHECK" != "yes" ]; then
+	if [ "$MAKE_CHECK" == "yes" ]; then
 		ln -sfv /tools/lib/lib{blk,uu}id.so.1 lib
 		make LD_LIBRARY_PATH=/tools/lib check
 		if [ $? != 0 ]; then
@@ -2514,7 +2596,7 @@ function make_system_coreutils()
 	if [ $? != 0 ]; then
 		echo fail; exit
 	fi
-	if [ "$MAKE_SKIP_CHECK" != "yes" ]; then
+	if [ "$MAKE_CHECK" == "yes" ]; then
 		make NON_ROOT_USERNAME=nobody check-root
 		if [ $? != 0 ]; then
 			echo fail; exit
@@ -2584,7 +2666,7 @@ function make_system_m4()
 	if [ $? != 0 ]; then
 		echo fail; exit
 	fi
-	if [ "$MAKE_SKIP_CHECK" != "yes" ]; then
+	if [ "$MAKE_CHECK" == "yes" ]; then
 		make check
 		if [ $? != 0 ]; then
 			echo fail; exit
@@ -2620,7 +2702,7 @@ function make_system_flex()
 	if [ $? != 0 ]; then
 		echo fail; exit
 	fi
-	if [ "$MAKE_SKIP_CHECK" != "yes" ]; then
+	if [ "$MAKE_CHECK" == "yes" ]; then
 		make check
 		if [ $? != 0 ]; then
 			echo fail; exit
@@ -2654,7 +2736,7 @@ function make_system_bison()
 	if [ $? != 0 ]; then
 		echo fail; exit
 	fi
-	if [ "$MAKE_SKIP_CHECK" != "yes" ]; then
+	if [ "$MAKE_CHECK" == "yes" ]; then
 		make check
 		if [ $? != 0 ]; then
 			echo fail; exit
@@ -2690,7 +2772,7 @@ function make_system_grep()
 	if [ $? != 0 ]; then
 		echo fail; exit
 	fi
-	if [ "$MAKE_SKIP_CHECK" != "yes" ]; then
+	if [ "$MAKE_CHECK" == "yes" ]; then
 		make check
 		if [ $? != 0 ]; then
 			echo fail; exit
@@ -2767,7 +2849,7 @@ function make_system_bash()
 	if [ $? != 0 ]; then
 		echo fail; exit
 	fi
-	if [ "$MAKE_SKIP_CHECK" != "yes" ]; then
+	if [ "$MAKE_CHECK" == "yes" ]; then
 		chown -Rv nobody .
 		su nobody -s /bin/bash -c "PATH=$PATH make $MAKE_FLAGS tests"
 	fi
@@ -2833,7 +2915,7 @@ function make_system_libtool()
 	if [ $? != 0 ]; then
 		echo fail; exit
 	fi
-	if [ "$MAKE_SKIP_CHECK" != "yes" ]; then
+	if [ "$MAKE_CHECK" == "yes" ]; then
 		make -i $MAKE_FLAGS check
 		if [ $? != 0 ]; then
 			echo fail; exit
@@ -2866,7 +2948,7 @@ function make_system_gdbm()
 	if [ $? != 0 ]; then
 		echo fail; exit
 	fi
-	if [ "$MAKE_SKIP_CHECK" != "yes" ]; then
+	if [ "$MAKE_CHECK" == "yes" ]; then
 		make check
 		if [ $? != 0 ]; then
 			echo fail; exit
@@ -2899,7 +2981,7 @@ function make_system_expat()
 	if [ $? != 0 ]; then
 		echo fail; exit
 	fi
-	if [ "$MAKE_SKIP_CHECK" != "yes" ]; then
+	if [ "$MAKE_CHECK" == "yes" ]; then
 		make check
 		if [ $? != 0 ]; then
 			echo fail; exit
@@ -2941,7 +3023,7 @@ function make_system_inetutils()
 	if [ $? != 0 ]; then
 		echo fail; exit
 	fi
-	if [ "$MAKE_SKIP_CHECK" != "yes" ]; then
+	if [ "$MAKE_CHECK" == "yes" ]; then
 		make check
 		if [ $? != 0 ]; then
 			echo fail; exit
@@ -2985,7 +3067,7 @@ function make_system_perl()
 	if [ $? != 0 ]; then
 		echo fail; exit
 	fi
-	if [ "$MAKE_SKIP_CHECK" != "yes" ]; then
+	if [ "$MAKE_CHECK" == "yes" ]; then
 		make -k $MAKE_FLAGS test
 		if [ $? != 0 ]; then
 			echo fail; exit
@@ -3019,7 +3101,7 @@ function make_system_xmlparser()
 	if [ $? != 0 ]; then
 		echo fail; exit
 	fi
-	if [ "$MAKE_SKIP_CHECK" != "yes" ]; then
+	if [ "$MAKE_CHECK" == "yes" ]; then
 		make test
 		if [ $? != 0 ]; then
 			echo fail; exit
@@ -3052,7 +3134,7 @@ function make_system_autoconf()
 	if [ $? != 0 ]; then
 		echo fail; exit
 	fi
-	if [ "$MAKE_SKIP_CHECK" != "yes" ]; then
+	if [ "$MAKE_CHECK" == "yes" ]; then
 		make -i $MAKE_FLAGS check  # use very long time
 		if [ $? != 0 ]; then
 			echo fail; exit
@@ -3085,7 +3167,7 @@ function make_system_automake()
 	if [ $? != 0 ]; then
 		echo fail; exit
 	fi
-	if [ "$MAKE_SKIP_CHECK" != "yes" ]; then
+	if [ "$MAKE_CHECK" == "yes" ]; then
 		sed -i "s:./configure:LEXLIB=/usr/lib/libfl.a &:" t/lex-{clean,depend}-cxx.sh
 		make -i $MAKE_FLAGS check # use very long time
 		if [ $? != 0 ]; then
@@ -3122,7 +3204,7 @@ function make_system_diffutils()
 	if [ $? != 0 ]; then
 		echo fail; exit
 	fi
-	if [ "$MAKE_SKIP_CHECK" != "yes" ]; then
+	if [ "$MAKE_CHECK" == "yes" ]; then
 		make check
 		if [ $? != 0 ]; then
 			echo fail; exit
@@ -3155,7 +3237,7 @@ function make_system_gawk()
 	if [ $? != 0 ]; then
 		echo fail; exit
 	fi
-	if [ "$MAKE_SKIP_CHECK" != "yes" ]; then
+	if [ "$MAKE_CHECK" == "yes" ]; then
 		make check
 		if [ $? != 0 ]; then
 			echo fail; exit
@@ -3190,7 +3272,7 @@ function make_system_findutils()
 	if [ $? != 0 ]; then
 		echo fail; exit
 	fi
-	if [ "$MAKE_SKIP_CHECK" != "yes" ]; then
+	if [ "$MAKE_CHECK" == "yes" ]; then
 		make check
 		if [ $? != 0 ]; then
 			echo fail; exit
@@ -3225,7 +3307,7 @@ function make_system_gettext()
 	if [ $? != 0 ]; then
 		echo fail; exit
 	fi
-	if [ "$MAKE_SKIP_CHECK" != "yes" ]; then
+	if [ "$MAKE_CHECK" == "yes" ]; then
 		make check
 		if [ $? != 0 ]; then
 			echo fail; exit
@@ -3258,7 +3340,7 @@ function make_system_intltool()
 	if [ $? != 0 ]; then
 		echo fail; exit
 	fi
-	if [ "$MAKE_SKIP_CHECK" != "yes" ]; then
+	if [ "$MAKE_CHECK" == "yes" ]; then
 		make check
 		if [ $? != 0 ]; then
 			echo fail; exit
@@ -3292,7 +3374,7 @@ function make_system_gperf()
 	if [ $? != 0 ]; then
 		echo fail; exit
 	fi
-	if [ "$MAKE_SKIP_CHECK" != "yes" ]; then
+	if [ "$MAKE_CHECK" == "yes" ]; then
 		make check
 		if [ $? != 0 ]; then
 			echo fail; exit
@@ -3352,7 +3434,7 @@ function make_system_xz()
 	if [ $? != 0 ]; then
 		echo fail; exit
 	fi
-	if [ "$MAKE_SKIP_CHECK" != "yes" ]; then
+	if [ "$MAKE_CHECK" == "yes" ]; then
 		make check
 		if [ $? != 0 ]; then
 			echo fail; exit
@@ -3447,7 +3529,7 @@ function make_system_gzip()
 	if [ $? != 0 ]; then
 		echo fail; exit
 	fi
-	if [ "$MAKE_SKIP_CHECK" != "yes" ]; then
+	if [ "$MAKE_CHECK" == "yes" ]; then
 		make check
 		if [ $? != 0 ]; then
 			echo fail; exit
@@ -3515,7 +3597,7 @@ function make_system_kbd()
 	if [ $? != 0 ]; then
 		echo fail; exit
 	fi
-	if [ "$MAKE_SKIP_CHECK" != "yes" ]; then
+	if [ "$MAKE_CHECK" == "yes" ]; then
 		make check
 		if [ $? != 0 ]; then
 			echo fail; exit
@@ -3555,7 +3637,7 @@ function make_system_kmod()
 	if [ $? != 0 ]; then
 		echo fail; exit
 	fi
-	if [ "$MAKE_SKIP_CHECK" != "yes" ]; then
+	if [ "$MAKE_CHECK" == "yes" ]; then
 		make check
 		if [ $? != 0 ]; then
 			echo fail; exit
@@ -3592,7 +3674,7 @@ function make_system_libpipeline()
 	if [ $? != 0 ]; then
 		echo fail; exit
 	fi
-	if [ "$MAKE_SKIP_CHECK" != "yes" ]; then
+	if [ "$MAKE_CHECK" == "yes" ]; then
 		make check
 		if [ $? != 0 ]; then
 			echo fail; exit
@@ -3625,7 +3707,7 @@ function make_system_make()
 	if [ $? != 0 ]; then
 		echo fail; exit
 	fi
-	if [ "$MAKE_SKIP_CHECK" != "yes" ]; then
+	if [ "$MAKE_CHECK" == "yes" ]; then
 		make check
 		if [ $? != 0 ]; then
 			echo fail; exit
@@ -3658,7 +3740,7 @@ function make_system_patch()
 	if [ $? != 0 ]; then
 		echo fail; exit
 	fi
-	if [ "$MAKE_SKIP_CHECK" != "yes" ]; then
+	if [ "$MAKE_CHECK" == "yes" ]; then
 		make check
 		if [ $? != 0 ]; then
 			echo fail; exit
@@ -3705,7 +3787,7 @@ function make_system_utillinux()
 	if [ $? != 0 ]; then
 		echo fail; exit
 	fi
-	if [ "$MAKE_SKIP_CHECK" != "yes" ]; then
+	if [ "$MAKE_CHECK" == "yes" ]; then
 		# Test
 		chown -Rv nobody .
 		su nobody -s /bin/bash -c "PATH=$PATH make -k check"
@@ -3782,7 +3864,7 @@ EOF
 	# Create systemd-journald's /etc/machine-id
 	systemd-machine-id-setup
 	# Test
-	if [ "$MAKE_SKIP_CHECK" != "yes" ]; then
+	if [ "$MAKE_CHECK" == "yes" ]; then
 		sed -i "s:minix:ext4:g" src/test/test-path-util.c
 		make LD_LIBRARY_PATH=/tools/lib -k check
 	fi
@@ -3849,7 +3931,7 @@ function make_system_mandb()
 	if [ $? != 0 ]; then
 		echo fail; exit
 	fi
-	if [ "$MAKE_SKIP_CHECK" != "yes" ]; then
+	if [ "$MAKE_CHECK" == "yes" ]; then
 		make check
 		if [ $? != 0 ]; then
 			echo fail; exit
@@ -3885,7 +3967,7 @@ function make_system_tar()
 	if [ $? != 0 ]; then
 		echo fail; exit
 	fi
-	if [ "$MAKE_SKIP_CHECK" != "yes" ]; then
+	if [ "$MAKE_CHECK" == "yes" ]; then
 		make check
 		if [ $? != 0 ]; then
 			echo fail; exit
@@ -3922,7 +4004,7 @@ function make_system_texinfo()
 	if [ $? != 0 ]; then
 		echo fail; exit
 	fi
-	if [ "$MAKE_SKIP_CHECK" != "yes" ]; then
+	if [ "$MAKE_CHECK" == "yes" ]; then
 		make check
 		if [ $? != 0 ]; then
 			echo fail; exit
@@ -3968,7 +4050,7 @@ function make_system_vim()
 	if [ $? != 0 ]; then
 		echo fail; exit
 	fi
-	if [ "$MAKE_SKIP_CHECK" != "yes" ]; then
+	if [ "$MAKE_CHECK" == "yes" ]; then
 		make -j1 test
 		if [ $? != 0 ]; then
 			echo fail; exit
@@ -4098,11 +4180,12 @@ function make_system_kernel()
 	if [ $? != 0 ]; then
 		echo fail; exit
 	fi
-	make menuconfig
+	#make menuconfig
+	cp /build/kernel_config-3.19 .config
 	if [ $? != 0 ]; then
 		echo fail; exit
 	fi
-	make
+	make $MAKE_FLAGS
 	if [ $? != 0 ]; then
 		echo fail; exit
 	fi
@@ -4113,9 +4196,11 @@ function make_system_kernel()
 	cp -v arch/$(uname -m)/boot/bzImage /boot/vmlinuz-3.19-lfs-7.7-systemd
 	cp -v System.map /boot/System.map-3.19
 	cp -v .config /boot/config-3.19
-	cp -v .config /qmd/kernel_config-3.19
-	install -d /usr/share/doc/linux-3.19
-	cp -r Documentation/* /usr/share/doc/linux-3.19
+	#cp -v .config /build/kernel_config-3.19
+	if [ "$MAKE_DOC" == "yes" ]; then
+		install -d /usr/share/doc/linux-3.19
+		cp -r Documentation/* /usr/share/doc/linux-3.19
+	fi
 	cd -
 }
 
@@ -4138,7 +4223,7 @@ EOF
 
 function make_system()
 {
-	if [ ! -d /qmd ]; then
+	if [ ! -d /build ]; then
 		echo "You must chroot first"
 		exit
 	fi
@@ -4148,7 +4233,7 @@ function make_system()
 		exit
 	fi
 
-<<EOF
+	<<EOF
 	make_system_kernel_headers
 	make_system_manpages
 	make_system_glibc
@@ -4213,15 +4298,16 @@ function make_system()
 	make_system_texinfo
 	make_system_vim
 EOF
-	#config_system_network
-	#config_system
-	#make_system_kernel
+
+	make_system_kernel
+	config_system_network
+	config_system
 	config_system_grub
 }
 
 function create_virtualbox_vmdk()
 {
-	if [ -d /qmd ]; then
+	if [ -d /build ]; then
 		echo "You must be on host"
 		exit
 	fi
@@ -4238,14 +4324,14 @@ function main()
 	"disk")
 		create_disk
 		;;
-	"srcs")
-		create_srcs
+	"clean")
+		make_clean
+		;;
+	"dirs")
+		make_dirs $2
 		;;
 	"tools")
 		make_tools $2
-		;;
-	"rootfs")
-		make_rootfs $2
 		;;
 	"chroot")
 		change_root $2
@@ -4253,11 +4339,8 @@ function main()
 	"system")
 		make_system $2
 		;;
-	"clean")
-		make_clean
-		;;
 	*)
-		echo "Invalid args"
+		print_env
 		;;
 	esac
 }
