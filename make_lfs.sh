@@ -11,8 +11,8 @@ SYSTEM_INSTALL=$(dirname $PWD)/system
 BUILD_INSTALL=$(dirname $PWD)/build
 ROOTFS=$SYSTEM_INSTALL
 
-MAKE_DOC=yes
-MAKE_CHECK=yes
+MAKE_DOC=no
+MAKE_CHECK=no
 MAKE_FLAGS=-j4
 
 LFS_TGT=$(uname -m)-lfs-linux-gnu
@@ -26,6 +26,7 @@ function print_env()
 	echo SYSTEM_INSTALL=$SYSTEM_INSTALL
 	echo BUILD_INSTALL=$BUILD_INSTALL
 	echo ROOTFS=$ROOTFS
+	echo MAKE_DOC=$MAKE_DOC
 	echo MAKE_CHECK=$MAKE_CHECK
 	echo MAKE_FLAGS=$MAKE_FLAGS
 
@@ -124,10 +125,10 @@ EOF
 function make_dirs()
 {
 	if [ "$1" == "mount" ]; then
-		make_memfs
+		mount_dirs
 		exit
 	elif [ "$1" == "umount" ]; then
-		make_memfs clean
+		mount_dirs clean
 		exit
 	fi
 
@@ -177,7 +178,6 @@ function make_dirs()
 	esac
 
 	make_rootfs
-	make_memfs
 }
 
 function make_rootfs_clean()
@@ -212,7 +212,7 @@ function make_rootfs()
 
 	echo "make rootfs FHS"
 
-	cd $SYSTEM_INSTALL
+	cd $ROOTFS
 
 	# root dir
 	sudo mkdir -pv bin boot dev etc home lib media mnt opt proc root run sbin srv sys tmp usr var
@@ -248,7 +248,7 @@ function make_rootfs()
 	sudo mknod -m 600 $ROOTFS/dev/console c 5 1
 	sudo mknod -m 666 $ROOTFS/dev/null c 1 3
 
-	sudo bash -c "sed 's/tools/usr/' /tools/lib/libstdc++.la > usr/lib/libstdc++.la"
+	#sudo bash -c "sed 's/tools/usr/' /tools/lib/libstdc++.la > usr/lib/libstdc++.la"
 
 	sudo bash -c "cat > etc/passwd << EOF
 root:x:0:0:root:/root:/bin/bash
@@ -308,21 +308,11 @@ EOF"
 	cd -
 }
 
-function make_memfs()
+function mount_dirs()
 {
-	for dir in $ROOTFS/build  \
-		$ROOTFS/tools     \
-		$ROOTFS/dev       \
-		$ROOTFS/dev/pts   \
-		$ROOTFS/proc      \
-		$ROOTFS/sys       \
-		$ROOTFS/run;
-	do
+	for dir in $ROOTFS/build $ROOTFS/tools; do
 		if [ "$1" == "clean" ]; then
 			if grep -q "$dir" /proc/mounts; then
-				if [ $dir == $ROOTFS/dev ]; then
-					sudo umount -v $dir/pts
-				fi
 				sudo umount -v $dir
 			else
 				printf "%-32s already umounted\n" $dir
@@ -347,6 +337,43 @@ function make_memfs()
 		"$ROOTFS/tools")
 			sudo mount -v --bind $TOOLS_INSTALL $dir
 			;;
+		esac
+	done
+}
+
+function mount_memfs()
+{
+	mount_list="$ROOTFS/dev $ROOTFS/dev/pts $ROOTFS/proc $ROOTFS/sys $ROOTFS/run"
+	umount_list="$ROOTFS/dev/pts $ROOTFS/dev $ROOTFS/proc $ROOTFS/sys $ROOTFS/run"
+	
+	if [ "$1" == "clean" ]; then
+		list=$umount_list
+	else
+		list=$mount_list
+	fi
+
+	for dir in $list;
+	do
+		if [ "$1" == "clean" ]; then
+			if grep -q "$dir" /proc/mounts; then
+				sudo umount -v $dir
+			else
+				printf "%-32s already umounted\n" $dir
+			fi
+			continue
+		fi
+
+		if grep -q "$dir" /proc/mounts; then
+			printf "%-32s already mounted\n" $dir
+			continue
+		fi
+
+		if [ ! -d $dir ]; then
+			echo "$dir not exists"
+			continue
+		fi
+
+		case "$dir" in
 		"$ROOTFS/dev")
 			sudo mount -v --bind /dev $dir
 			;;
@@ -377,12 +404,13 @@ function make_clean()
 {
 	echo make clean
 
-	make_memfs clean
-	rm -vrf $SOURCE_TAR
-	rm -vrf $TOOLS_SRC
-	rm -vrf $SYSTEM_SRC
-	sudo rm -vrf $TOOLS_INSTALL
-	sudo rm -vrf $SYSTEM_INSTALL
+	mount_memfs clean
+	mount_dirs clean
+	rm -rf $SOURCE_TAR
+	sudo rm -rf $TOOLS_SRC
+	sudo rm -rf $SYSTEM_SRC
+	sudo rm -rf $TOOLS_INSTALL
+	sudo rm -rf $SYSTEM_INSTALL
 	sudo rm -vf /tools
 }
 
@@ -621,15 +649,14 @@ function make_tools_gcc_2nd()
 	if [ $? != 0 ]; then
 		echo fail; exit
 	fi
-
+	sudo bash -c "sed 's/tools/usr/' /tools/lib/libstdc++.la > $ROOTFS/usr/lib/libstdc++.la"
 	ln -sv gcc /tools/bin/cc
-
-	cd -
-
+	# Test
 	echo 'main(){}' > dummy.c
 	cc dummy.c
 	readelf -l a.out | grep ': /tools'
 	rm -v dummy.c a.out
+	cd -
 }
 
 function make_tools_libstdcxx()
@@ -733,7 +760,7 @@ function make_tools_glibc()
 	if [ $? != 0 ]; then
 		echo fail; exit
 	fi
-	make
+	make $MAKE_FLAGS
 	if [ $? != 0 ]; then
 		echo fail; exit
 	fi
@@ -1542,12 +1569,42 @@ function make_tools_clean()
 	esac
 }
 
+function make_tools_strip()
+{
+<<EOF
+	strip --strip-debug /tools/lib/*
+	/usr/bin/strip --strip-unneeded /tools/{,s}bin/*
+	rm -rf /tools/{,share}/{info,man,doc}
+EOF
+
+	files=$(/usr/bin/find /tools/{bin,lib,sbin})
+	for file in $files;
+	do
+		echo "Check $file"
+		if echo "$file" | grep -E "*\.a$|*\.ko$|*\.o$" ; then
+			echo "Skip $file"
+			continue
+		fi
+		if /usr/bin/file $file | /bin/grep "not stripped" ; then
+			echo "strip $file"
+			/usr/bin/strip $file
+		else
+			echo "Can not strip $(/usr/bin/file $file)"
+		fi
+	done
+}
+
 function make_tools()
 {
 	if [ "$1" == "clean" ]; then
 		make_tools_clean
 		exit
+	elif [ "$1" == "strip" ]; then
+		make_tools_strip
+		exit
 	fi
+
+	mount_dirs
 
 	make_tools_binutils_1st
 	make_tools_gcc_1st
@@ -1585,6 +1642,14 @@ function make_tools()
 
 function change_root()
 {
+	if [ "$1" == "mount" ]; then
+		mount_memfs
+		exit
+	elif [ "$1" == "umount" ]; then
+		mount_memfs clean
+		exit
+	fi
+
 	sudo chroot "$ROOTFS" /tools/bin/env -i  \
 		HOME=/root                    \
 		TERM="$TERM"                  \
@@ -1598,6 +1663,66 @@ function change_root()
 function make_system_clean()
 {
 	echo "system clean"
+}
+
+function make_system_strip()
+{
+	echo "system clean"
+	#/tools/bin/find /{,usr/}{bin,lib,sbin} -type f -exec /tools/bin/strip --strip-debug '{}' ';'
+#	/tools/bin/strip --strip-debug /{,usr/}{bin,lib,sbin}/*
+<<EOF
+	/tools/bin/find /bin -type f -exec /tools/bin/strip --strip-debug '{}' ';'
+	echo 1 ; sleep 1
+	/tools/bin/find /lib -type f -exec /tools/bin/strip --strip-debug '{}' ';'
+	echo 2 ; sleep 1
+	/tools/bin/find /sbin -type f -exec /tools/bin/strip --strip-debug '{}' ';'
+	echo 3 ; sleep 1
+	/tools/bin/find /usr/bin -type f -exec /tools/bin/strip --strip-debug '{}' ';'
+	/tools/bin/find /usr/lib -type f -exec /tools/bin/strip --strip-debug '{}' ';'
+	/tools/bin/find /usr/sbin -type f -exec /tools/bin/strip --strip-debug '{}' ';'
+	/tools/bin/strip --strip-debug /bin/*
+	/tools/bin/strip --strip-debug /lib/*
+	/tools/bin/strip --strip-debug /sbin/*
+	/tools/bin/strip --strip-debug /usr/bin/*
+	/tools/bin/strip --strip-debug /usr/lib/*
+	/tools/bin/strip --strip-debug /usr/sbin/*
+EOF
+
+	files=$(/tools/bin/find /{,usr/}{bin,lib,sbin})
+	#files=$(/tools/bin/find /{,usr/}{bin,sbin})
+	for file in $files;
+	do
+		echo "Check $file"
+		if echo "$file" | grep -E "*\.a$|*\.ko$|*\.o$" ; then
+			echo "Skip $file"
+			continue
+		fi
+		if /tools/bin/file $file | /tools/bin/grep "not stripped" ; then
+			echo "strip $file"
+			/tools/bin/strip $file
+		else
+			echo "Can not strip $(/tools/bin/file $file)"
+		fi
+	done
+
+<<EOF
+	#files=$(/tools/bin/find /{,usr/}lib)
+	files=$(/tools/bin/find /lib)
+	for file in $files;
+	do
+		echo "Check $file"
+		if echo "$file" | grep -E "*\.a$|*\.ko$|*\.o$" ; then
+			echo "Skip $file"
+			continue
+		fi
+		if /tools/bin/file $file | /tools/bin/grep "not stripped" ; then
+			echo "strip $file"
+			/tools/bin/strip $file
+		else
+			echo "Can not strip $(/tools/bin/file $file)"
+		fi
+	done
+EOF
 }
 
 function make_system_kernel_headers()
@@ -4146,11 +4271,12 @@ EOF
 
 function config_system()
 {
-
-	cat > /etc/fstab << "EOF"
+	filepath=/etc/fstab
+	echo "Create mount configuration file $filepath"
+	cat > $filepath << "EOF"
 # Begin /etc/fstab
 
-# 文件系统  挂载点  文件类型     挂载选项             dump  fsck
+# <file system> <mount point>   <type>  <options>       <dump>  <pass>
 #                                                              order
 
 /dev/sda1     /            ext4     defaults            1     1
@@ -4158,6 +4284,39 @@ function config_system()
 
 # End /etc/fstab
 EOF
+
+	filepath=/etc/profile
+	echo "Create bash configuration file $filepath"
+	cat > $filepath << "EOF"
+# Begin /etc/profile
+
+PS1='\u@\h:\W\$ '
+alias ls='ls --color=auto'
+alias grep='grep --color=auto'
+
+# End /etc/profile
+EOF
+
+	filepath=/etc/vimrc
+	echo "Create vim configuration file $filepath"
+	cat >> $filepath << "EOF"
+syntax on  
+set history=100  
+set encoding=utf-8  
+set nocompatible  
+set number  
+set hlsearch  
+set cindent  
+set showmatch  
+set cursorline  
+set ruler  
+set laststatus=2  
+set cmdheight=1  
+set statusline=\ %<%F[%1*%M%*%n%R%H]%=\ %y\ %0(%{&fileformat}\ %{&encoding}\ %c:%l/%L%)\
+EOF
+
+	config_system_network
+	config_system_grub
 }
 
 function make_system_kernel()
@@ -4207,7 +4366,13 @@ function make_system_kernel()
 function config_system_grub()
 {
 	#grub-install /dev/sda
-	cat > /boot/grub/grub.cfg << "EOF"
+	if [ ! -d /boot/grub/ ]; then
+		mkdir -v /boot/grub
+	fi
+
+	filepath=/boot/grub/grub.cfg
+	echo "Create $filepath"
+	cat > $filepath << "EOF"
 # Begin /boot/grub/grub.cfg
 set default=0
 set timeout=5
@@ -4224,16 +4389,18 @@ EOF
 function make_system()
 {
 	if [ ! -d /build ]; then
-		echo "You must chroot first"
+		echo "You must chroot"
 		exit
 	fi
 
 	if [ "$1" == "clean" ]; then
 		make_system_clean
 		exit
+	elif [ "$1" == "strip" ]; then
+		make_system_strip
+		exit
 	fi
 
-	<<EOF
 	make_system_kernel_headers
 	make_system_manpages
 	make_system_glibc
@@ -4297,22 +4464,59 @@ function make_system()
 	make_system_tar
 	make_system_texinfo
 	make_system_vim
-EOF
 
 	make_system_kernel
-	config_system_network
 	config_system
-	config_system_grub
 }
 
-function create_virtualbox_vmdk()
+function make_vmdk()
 {
 	if [ -d /build ]; then
-		echo "You must be on host"
+		echo "You must be host"
 		exit
 	fi
 
-	sudo VBoxManage internalcommands createrawvmdk -filename /home/lfs/mydisk.vmdk -rawdisk /dev/sda
+	img=lfs.img
+	dir=vb
+	output=vb.vmdk
+
+	if [ "$1" == "clean" ]; then
+		sudo rm -rf $output $vb $img $output
+		exit
+	fi
+
+	if [ ! -d $dir ]; then
+		mkdir -v $dir
+	fi
+
+	echo "Create img. Please wait ..."
+	dd if=/dev/zero of=$img bs=1024 count=2097152
+	if [ $? != 0 ]; then
+		echo fail; exit
+	fi
+	sudo mkfs -v -t ext4 $img
+	#sudo mount -v -o loop $img $dir
+	sudo mount -v $img $dir
+	if [ $? != 0 ]; then
+		echo fail; exit
+	fi
+	echo "Copy rootfs files ..."
+	sudo cp -a $ROOTFS/* $dir/
+	if [ $? != 0 ]; then
+		echo fail; exit
+	fi
+	sudo umount -v $dir
+	if [ $? != 0 ]; then
+		echo fail; exit
+	fi
+	VBoxManage convertfromraw $img $output --format vmdk
+	if [ $? != 0 ]; then
+		echo fail; exit
+	fi
+
+#sudo VBoxManage internalcommands createrawvmdk -filename /home/lfs/mydisk.vmdk -rawdisk /dev/sda
+
+#sudo VBoxManage internalcommands sethduuid /home/lfs/vb2.vmdk
 }
 
 function main()
@@ -4338,6 +4542,9 @@ function main()
 		;;
 	"system")
 		make_system $2
+		;;
+	"vmdk")
+		make_vmdk $2
 		;;
 	*)
 		print_env
