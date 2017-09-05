@@ -6,6 +6,8 @@
 SOURCE_TAR=$PWD/source_tars
 TOOLS_SRC=$PWD/tools_srcs
 SYSTEM_SRC=$PWD/system_srcs
+TOOLS_INSTALL=$PWD/../tools
+ROOTFS_INSTALL=$PWD/../rootfs
 MAKE_SKIP_CHECK=yes
 MAKE_FLAGS=-j4
 
@@ -78,7 +80,7 @@ PATH=/tools/bin:/bin:/usr/bin
 export LFS LC_ALL LFS_TGT PATH
 EOF
 
-	su - lfs
+	#su - lfs
 	#source /home/lfs/.bash_profile
 	#sudo swapon -v /dev/sdb2
 	#sudo chmod -v a+wt $LFS/sources
@@ -1294,18 +1296,18 @@ function make_tools()
 		mkdir -vp $TOOLS_SRC
 	fi
 
-	if [ ! -d $LFS/tools ]; then
-		mkdir -vp $LFS/tools
+	if [ ! -d $TOOLS_INSTALL ]; then
+		mkdir -vp $TOOLS_INSTALL
+		if [ ! -f /tools ]; then
+			sudo ln -sv $TOOLS_INSTALL /tools
+		fi
+
 		case $(uname -m) in
 			x86_64)
 				mkdir -v /tools/lib
 				ln -sv lib /tools/lib64 
 			;;
 		esac
-	fi
-
-	if [ ! -f /tools ]; then
-		sudo ln -sv $LFS/tools /tools
 	fi
 
 	make_tools_binutils_1st
@@ -4230,11 +4232,11 @@ function create_virtualbox_vmdk()
 function main()
 {
 	case "$1" in
-	"disk")
-		create_disk
-		;;
 	"user")
 		create_user
+		;;
+	"disk")
+		create_disk
 		;;
 	"srcs")
 		create_srcs
