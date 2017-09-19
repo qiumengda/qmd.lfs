@@ -96,15 +96,43 @@ EOF
 
 function create_user()
 {
-	groupadd lfs
-	useradd -s /bin/bash -g lfs -m -k /dev/null lfs
-	passwd lfs
+	sudo groupadd lfs
+	sudo useradd -s /bin/bash -g lfs -m -k /dev/null lfs
+	sudo passwd lfs
 
-	cat > /home/lfs/.bash_profile << "EOF"
+
+#Use root
+<< EOF
+	cat > /home/lfs/.bash_profile << EOF
 exec env -i HOME=$HOME TERM=$TERM PS1='\u:\w\$ ' /bin/bash
 EOF
 
-	cat > /home/lfs/.bashrc << "EOF"
+#Use dd as root
+<< EOF
+	sudo dd of=/home/lfs/.bash_profile << EOF
+exec env -i HOME=$HOME TERM=$TERM PS1='\u:\w\$ ' /bin/bash
+EOF
+
+#Use tee as root
+<< EOF
+	cat << EOF | sudo tee /home/lfs/.bash_profile 
+exec env -i HOME=$HOME TERM=$TERM PS1='\u:\w\$ ' /bin/bash
+EOF
+
+#Use bash as root
+<< EOF
+	sudo bash -c "cat << EOF > /home/lfs/.bash_profile
+exec env -i HOME=$HOME TERM=$TERM PS1='\u:\w\$ ' /bin/bash
+EOF"
+EOF
+
+#Use bash as root
+#<<EOF
+	sudo bash -c 'cat > /home/lfs/.bash_profile' << EOF 
+exec env -i HOME=$HOME TERM=$TERM PS1='\u:\w\$ ' /bin/bash
+EOF
+
+	sudo bash -c 'cat > /home/lfs/.bashrc' << EOF
 set +h
 umask 022
 LFS=/mnt/lfs
@@ -112,6 +140,8 @@ LC_ALL=POSIX
 LFS_TGT=$(uname -m)-lfs-linux-gnu
 PATH=/tools/bin:/bin:/usr/bin
 export LFS LC_ALL LFS_TGT PATH
+alias ls='ls --color=auto'
+alias grep='grep --color=auto'
 EOF
 
 	#su - lfs
@@ -4909,10 +4939,10 @@ function main()
 		change_root $2
 		;;
 	"system")
-		#make_system $2
-#make_system_kernel
-#make_system_cpio
-make_system_initrd
+		make_system $2
+		# make_system_kernel
+		# make_system_cpio
+		# make_system_initrd
 		;;
 	"vmdk")
 		make_vmdk $2
