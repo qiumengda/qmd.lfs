@@ -8,7 +8,8 @@ TOOLS_SRC=$PWD/tools_srcs
 SYSTEM_SRC=$PWD/system_srcs
 TOOLS_INSTALL=$(dirname $PWD)/tools
 SYSTEM_INSTALL=$(dirname $PWD)/system
-BUILD_INSTALL=$(dirname $PWD)/build
+#BUILD_INSTALL=$(dirname $PWD)/build
+BUILD_INSTALL=$PWD
 ROOTFS=$SYSTEM_INSTALL
 
 MAKE_DOC=no
@@ -284,6 +285,58 @@ function make_rootfs()
 	sudo chgrp -v utmp var/log/lastlog
 	sudo chmod -v 664  var/log/lastlog
 	sudo chmod -v 600  var/log/btmp
+
+	filepath=etc/passwd
+	echo "Create $filepath"
+	sudo bash -c "cat > $filepath" << EOF
+root::0:0:root:/root:/bin/bash
+bin:x:1:1:bin:/dev/null:/bin/false
+daemon:x:6:6:Daemon User:/dev/null:/bin/false
+messagebus:x:18:18:D-Bus Message Daemon User:/var/run/dbus:/bin/false
+systemd-bus-proxy:x:72:72:systemd Bus Proxy:/:/bin/false
+systemd-journal-gateway:x:73:73:systemd Journal Gateway:/:/bin/false
+systemd-journal-remote:x:74:74:systemd Journal Remote:/:/bin/false
+systemd-journal-upload:x:75:75:systemd Journal Upload:/:/bin/false
+systemd-network:x:76:76:systemd Network Management:/:/bin/false
+systemd-resolve:x:77:77:systemd Resolver:/:/bin/false
+systemd-timesync:x:78:78:systemd Time Synchronization:/:/bin/false
+nobody:x:99:99:Unprivileged User:/dev/null:/bin/false
+EOF
+
+	filepath=etc/group
+	echo "Create $filepath"
+	sudo bash -c "cat > $filepath" << EOF
+root:x:0:
+bin:x:1:daemon
+sys:x:2:
+kmem:x:3:
+tape:x:4:
+tty:x:5:
+daemon:x:6:
+floppy:x:7:
+disk:x:8:
+lp:x:9:
+dialout:x:10:
+audio:x:11:
+video:x:12:
+utmp:x:13:
+usb:x:14:
+cdrom:x:15:
+adm:x:16:
+messagebus:x:18:
+systemd-journal:x:23:
+input:x:24:
+mail:x:34:
+systemd-bus-proxy:x:72:
+systemd-journal-gateway:x:73:
+systemd-journal-remote:x:74:
+systemd-journal-upload:x:75:
+systemd-network:x:76:
+systemd-resolve:x:77:
+systemd-timesync:x:78:
+nogroup:x:99:
+users:x:999:
+EOF
 
 	cd -
 }
@@ -1585,7 +1638,6 @@ function make_tools()
 	fi
 
 	mount_dirs
-
 	make_tools_binutils_1st
 	make_tools_gcc_1st
 	make_tools_kernel_headers
@@ -4758,6 +4810,9 @@ exec switch_root /.root "$init" "$@"
 
 EOF
 
+
+	mkinitramfs 3.19.0
+	mv initrd.img-3.19.0 /boot
 }
 
 function config_system_grub()
@@ -4774,11 +4829,12 @@ function config_system_grub()
 set default=0
 set timeout=5
 
-insmod ext4
+insmod ext2
 set root=(hd0,1)
 
 menuentry "GNU/Linux, Linux 3.19-lfs-7.7-systemd" {
-        linux   /boot/vmlinuz-3.19-lfs-7.7-systemd root=/dev/sda1 rw
+	linux /boot/vmlinuz-3.19-lfs-7.7-systemd root=/dev/sdb1 rw rootdelay=5
+	initrd /boot/initrd.img-3.19.0
 }
 EOF
 }
@@ -4921,6 +4977,9 @@ function main()
 {
 	case "$1" in
 	"user")
+ 		sudo apt-get install texinfo #For makeinfo
+ 		sudo apt-get install build-essential #For g++
+ 		sudo apt-get install gawk #For gawk
 		create_user
 		;;
 	"disk")

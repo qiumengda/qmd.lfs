@@ -1,0 +1,43 @@
+# linuxfromscratch
+
+Here use virtualbox-5.1.10 to build and install USB disk LFS system.
+
+========
+Step 1. Add a user lfs.
+========
+
+./make_lfs.sh user
+
+
+========
+Step 2. Create rootfs.
+========
+
+./make_lfs.sh dirs
+
+
+========
+Step 3. Build tools.
+========
+
+./make_lfs.sh tools
+
+========
+Step 4. Mount and chroot.
+========
+
+./make_lfs.sh dirs mount
+./make_lfs.sh chroot mount
+./make_lfs.sh chroot
+
+========
+Step 4. Build system.
+========
+
+./make_lfs.sh system
+
+========
+Step 5. Install USB disk.
+========
+
+
