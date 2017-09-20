@@ -1,0 +1,68 @@
+
+
+Use virtualbox-5.1.10 ubuntu-14.04 host
+
+Because I want to install USB disk OS in vbox, I tried the following way.
+1. Install vbox File > Preferences > Extensions > xxx-5.1.10-xxx.vbox-extpack.
+2. Install vbox Devices > Insert Guest Additions CD image > autorun.sh
+3. Run vbox as root.
+After done these, I can use my USB disk in vbox at last.
+
+I use the following command to format USB disk.
+$ sudo fdisk /dev/sdb
+Command (m for help): m
+Command action
+   a   toggle a bootable flag
+   b   edit bsd disklabel
+   c   toggle the dos compatibility flag
+   d   delete a partition
+   l   list known partition types
+   m   print this menu
+   n   add a new partition
+   o   create a new empty DOS partition table
+   p   print the partition table
+   q   quit without saving changes
+   s   create a new empty Sun disklabel
+   t   change a partition's system id
+   u   change display/entry units
+   v   verify the partition table
+   w   write table to disk and exit
+   x   extra functionality (experts only)
+Command (m for help): n 
+Command (m for help): p (sdb1, 5GB/8GB)
+Command (m for help): n
+Command (m for help): e (sdb2, 3GB/8GB)
+Command (m for help): n
+Command (m for help): l (sdb5, 3GB/8GB)
+Command (m for help): t (sdb5, id=82, swap)
+Command (m for help): a (sdb1, 1, bootable flag)
+Command (m for help): w
+$ sudo mkfs.ext4 /dev/sdb1
+$ sudo mkswap /dev/sdb5
+
+I copy the lfs system files to the root dir of the use disk.
+mount memfs, chroot and grub-install.
+$ sudo mount -v --bind /dev dev
+$ sudo mount -vt devpts devpts dev/pts -o gid=5,mode=620
+$ sudo mount -vt proc proc proc
+$ sudo mount -vt sysfs sysfs sys
+$ sudo mount -vt tmpfs tmpfs run
+$ sudo chroot .
+$ grub-install /dev/sdb #This will change the MBR
+$ sudo umount -v dev/pts dev proc sys run
+
+Modify /boot/grub/grub.cfg
+# Begin /boot/grub/grub.cfg
+set default=0
+set timeout=5
+
+insmod ext2
+set root=(hd0,1)
+
+menuentry "GNU/Linux, Linux 3.19-lfs-7.7-systemd" {
+        linux /boot/vmlinuz-3.19-lfs-7.7-systemd root=/dev/sdb1 rw rootdelay=5
+        #initrd /boot/initrd.img-3.19.0
+}
+# End
+The rootdelay or initrd is used to  fix usb disk detect too slow.
+
