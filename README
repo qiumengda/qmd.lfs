@@ -1,6 +1,6 @@
 # linuxfromscratch
 
-Here use virtualbox-5.1.10 to build and install USB disk LFS system.
+Here use virtualbox-5.1.10 + Ubuntu-14.04 to build and install USB disk LFS system.
 
 User A: qmd
 User B: lfs
