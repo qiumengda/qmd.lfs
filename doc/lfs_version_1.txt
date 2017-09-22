@@ -4,7 +4,7 @@ Here use virtualbox-5.1.10 to build and install USB disk LFS system.
 
 User A: qmd
 User B: lfs
-User C: root
+User C; root
 
 ========
 Stage 1. User A add new user User B.
@@ -18,19 +18,30 @@ Stage 2. User B build tools, empty dirs, mount fs and chroot to User C.
 ========
 
 ./make_lfs.sh dirs
+
 ./make_lfs.sh tools
+
+========
+Step 3. Build tools.
+========
+
+
+========
+Step 4. Mount and chroot.
+========
+
 ./make_lfs.sh dirs mount
 ./make_lfs.sh chroot mount
 ./make_lfs.sh chroot
 
 ========
-Stage 3. User C build rootfs, kernel.
+Step 4. Build system.
 ========
 
 ./make_lfs.sh system
 
 ========
-Stage 4. Install USB disk.
+Step 5. Install USB disk.
 ========
 
 
