@@ -1,5 +1,15 @@
 #!/bin/sh
 
+#Make sure this file only be included once
+if [ "$__MODULE_BUILD_ROOTFS__" == "yes" ]; then
+        return
+else
+        __MODULE_BUILD_ROOTFS__=yes
+fi
+
+source $PWD/module_env.sh
+
+<<EOF
 SOURCE_TAR=$PWD/source_tars
 TOOLS_SRC=$PWD/tools_srcs
 SYSTEM_SRC=$PWD/system_srcs
@@ -14,6 +24,7 @@ MAKE_CHECK=no
 MAKE_FLAGS=-j4
 
 LFS_TGT=$(uname -m)-lfs-linux-gnu
+EOF
 
 function make_system_kernel_headers()
 {

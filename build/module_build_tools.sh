@@ -1,5 +1,15 @@
 #!/bin/sh
 
+#Make sure this file only be included once
+if [ "$__MODULE_BUILD_TOOLS__" == "yes" ]; then
+	return
+else
+	__MODULE_BUILD_TOOLS__=yes
+fi
+
+source $PWD/module_env.sh
+
+<<EOF
 SOURCE_TAR=$PWD/source_tars
 TOOLS_SRC=$PWD/tools_srcs
 SYSTEM_SRC=$PWD/system_srcs
@@ -12,6 +22,7 @@ ROOTFS=$SYSTEM_INSTALL
 MAKE_DOC=no
 MAKE_CHECK=no
 MAKE_FLAGS=-j4
+EOF
 
 LFS_TGT=$(uname -m)-lfs-linux-gnu
 
@@ -1250,20 +1261,3 @@ function make_tools_clean()
 	rm -vrf /tools
 }
 
-function main()
-{
-	case "$1" in
-	"clean")
-		make_tools_clean
-		;;
-	"strip")
-		make_tools_strip
-		;;
-	*)
-		make_tools_init
-		make_tools
-		;;
-	esac
-}
-
-main $1
