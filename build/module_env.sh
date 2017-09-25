@@ -7,7 +7,7 @@ else
 	__MODULE_ENV__=yes
 fi
 
-SOURCE_TAR=$PWD/source_tars
+SOURCE_TAR=$(dirname $PWD)/packages
 TOOLS_SRC=$PWD/tools_srcs
 SYSTEM_SRC=$PWD/system_srcs
 TOOLS_INSTALL=$(dirname $PWD)/tools

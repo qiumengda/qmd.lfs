@@ -35,6 +35,7 @@ function main()
 		exit
 		;;
 	*)
+		echo "Start to make all"
 		;;
 	esac
 
@@ -43,15 +44,15 @@ function main()
 		add_user
 	fi
 
-	echo "su lfs"
+	echo "SU lfs"
 	su lfs
 
 	# Stage 2: User is lfs
 	make_tools
-	init_rootfs
-	mount_dirs
-	mount_memfs
-	change_root
+	# init_rootfs
+	# mount_dirs
+	# mount_memfs
+	# change_root
 
 	# Stage 3: User is root
 

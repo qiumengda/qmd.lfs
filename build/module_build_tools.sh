@@ -22,9 +22,10 @@ ROOTFS=$SYSTEM_INSTALL
 MAKE_DOC=no
 MAKE_CHECK=no
 MAKE_FLAGS=-j4
-EOF
 
 LFS_TGT=$(uname -m)-lfs-linux-gnu
+EOF
+
 
 function make_tools_binutils_1st()
 {
@@ -32,6 +33,15 @@ function make_tools_binutils_1st()
 	tar=$SOURCE_TAR/$app.tar.bz2
 	src=$TOOLS_SRC/$app-1st
 	build=$TOOLS_SRC/$app-1st-build
+
+	if [ -f $build/$buld-done ]; then
+		echo "$build build already done"
+		sleep 1
+		return
+	else
+		rm -vrf $rsc
+		rm -vrf $build
+	fi
 
 	if [ ! -d $src ]; then
 		tar -xvf $tar -C $TOOLS_SRC
@@ -62,6 +72,8 @@ function make_tools_binutils_1st()
 		echo fail; exit
 	fi
 	cd -
+
+	touch $build/$build-done
 }
 
 function make_tools_binutils_2nd()
@@ -70,6 +82,10 @@ function make_tools_binutils_2nd()
 	tar=$SOURCE_TAR/$app.tar.bz2
 	src=$TOOLS_SRC/$app-2nd
 	build=$TOOLS_SRC/$app-2nd-build
+
+	if [ -d $build ]; then
+		return
+	fi
 
 	if [ ! -d $src ]; then
 		tar -xvf $tar -C $TOOLS_SRC
@@ -116,6 +132,12 @@ function make_tools_gcc_1st()
 	tar=$SOURCE_TAR/$app.tar.bz2
 	src=$TOOLS_SRC/$app-1st
 	build=$TOOLS_SRC/$app-1st-build
+
+	if [ -f $build ]; then
+		echo "$build build already done"
+		sleep 1
+		return
+	fi
 
 	if [ ! -d $src ]; then
 		tar -xvf $tar -C $TOOLS_SRC
@@ -198,6 +220,10 @@ function make_tools_gcc_2nd()
 	src=$TOOLS_SRC/$app-2nd
 	build=$TOOLS_SRC/$app-2nd-build
 
+	if [ -d $build ]; then
+		return
+	fi
+
 	if [ ! -d $src ]; then
 		tar -xvf $tar -C $TOOLS_SRC
 		mv -v $TOOLS_SRC/$app $src
@@ -278,6 +304,11 @@ function make_tools_libstdcxx()
 	src=$TOOLS_SRC/$app-libstdcxx
 	build=$TOOLS_SRC/$app-libstdcxx-build
 
+	if [ -d $build ]; then
+		echo "$build already done"
+		return
+	fi
+
 	if [ ! -d $src ]; then
 		tar -xvf $tar -C $TOOLS_SRC
 		mv -v $TOOLS_SRC/$app $src
@@ -317,6 +348,12 @@ function make_tools_kernel_headers()
 	tar=$SOURCE_TAR/$app.tar.xz
 	src=$TOOLS_SRC/$app
 
+	if [ -d $src ]; then
+		echo "$src build already done"
+		sleep 1
+		return
+	fi
+
 	if [ ! -d $src ]; then
 		tar -xvf $tar -C $TOOLS_SRC
 	fi
@@ -340,6 +377,12 @@ function make_tools_glibc()
 	tar=$SOURCE_TAR/$app.tar.xz
 	src=$TOOLS_SRC/$app
 	build=$TOOLS_SRC/$app-build
+
+	if [ -d $build ]; then
+		echo "$build build already done"
+		sleep 1
+		return
+	fi
 
 	if [ ! -d $src ]; then
 		tar -xvf $tar -C $TOOLS_SRC
@@ -1165,42 +1208,6 @@ function make_tools_xz()
 	cd -
 }
 
-function make_tools()
-{
-	make_tools_binutils_1st
-	make_tools_gcc_1st
-	make_tools_kernel_headers
-	make_tools_glibc
-	make_tools_libstdcxx
-
-	make_tools_binutils_2nd
-	make_tools_gcc_2nd
-	make_tools_tcl
-	make_tools_expect
-	make_tools_dejagnu
-	make_tools_check
-	make_tools_ncurses
-	make_tools_bash
-	make_tools_bzip2
-	make_tools_coreutils
-	make_tools_diffutils
-	make_tools_file
-	make_tools_findutils
-	make_tools_gawk
-	make_tools_gettext
-	make_tools_grep
-	make_tools_gzip
-	make_tools_m4
-	make_tools_make
-	make_tools_patch
-	make_tools_perl
-	make_tools_sed
-	make_tools_tar
-	make_tools_texinfo
-	make_tools_util_linux
-	make_tools_xz
-}
-
 function make_tools_strip()
 {
 <<EOF
@@ -1251,13 +1258,50 @@ function make_tools_init()
         if [ ! -L /tools ]; then
                 sudo ln -sv $TOOLS_INSTALL /tools
         fi
-
 }
 
 function make_tools_clean()                                                                                                                                                      
 {
         rm -vrf $TOOLS_SRC
 	rm -vrf $TOOLS_INSTALL
-	rm -vrf /tools
+	sudo rm -vrf /tools
+}
+
+function make_tools()
+{
+	make_tools_init
+
+	make_tools_binutils_1st
+	make_tools_gcc_1st
+	make_tools_kernel_headers
+	make_tools_glibc
+	make_tools_libstdcxx
+
+	make_tools_binutils_2nd
+	make_tools_gcc_2nd
+	make_tools_tcl
+	make_tools_expect
+	make_tools_dejagnu
+	make_tools_check
+	make_tools_ncurses
+	make_tools_bash
+	make_tools_bzip2
+	make_tools_coreutils
+	make_tools_diffutils
+	make_tools_file
+	make_tools_findutils
+	make_tools_gawk
+	make_tools_gettext
+	make_tools_grep
+	make_tools_gzip
+	make_tools_m4
+	make_tools_make
+	make_tools_patch
+	make_tools_perl
+	make_tools_sed
+	make_tools_tar
+	make_tools_texinfo
+	make_tools_util_linux
+	make_tools_xz
 }
 
