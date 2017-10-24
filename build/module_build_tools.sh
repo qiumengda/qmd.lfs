@@ -367,7 +367,7 @@ function make_tools_kernel_headers()
 	if [ $? != 0 ]; then
 		echo fail; exit
 	fi
-	mv -v dest/include/* /tools/include
+	cp -v dest/include/* /tools/include
 	cd -
 }
 
@@ -1260,21 +1260,26 @@ function make_tools_init()
         fi
 }
 
-function make_tools_clean()                                                                                                                                                      
+function make_tools_clean()
 {
-        rm -vrf $TOOLS_SRC
-	rm -vrf $TOOLS_INSTALL
-	sudo rm -vrf /tools
+	echo "rm $TOOLS_SRC"
+        rm -rf $TOOLS_SRC
+
+	echo "rm $TOOLS_INSTALL"
+	rm -rf $TOOLS_INSTALL
+
+	echo "rm /tools"
+	sudo rm -rf /tools
 }
 
 function make_tools()
 {
-	make_tools_init
+#	make_tools_init
 
-	make_tools_binutils_1st
-	make_tools_gcc_1st
-	make_tools_kernel_headers
-	make_tools_glibc
+#	make_tools_binutils_1st
+#	make_tools_gcc_1st
+#	make_tools_kernel_headers
+#	make_tools_glibc
 	make_tools_libstdcxx
 
 	make_tools_binutils_2nd

@@ -16,37 +16,38 @@ function add_user()
 #Use root
 << EOF
         cat > /home/lfs/.bash_profile << EOF
-exec env -i HOME=$HOME TERM=$TERM PS1='\u:\w\$ ' /bin/bash
+exec env -i HOME=$HOME TERM=$TERM PS1='\u:\W\$ ' /bin/bash
 EOF
 
 #Use dd as root
 << EOF
         sudo dd of=/home/lfs/.bash_profile << EOF
-exec env -i HOME=$HOME TERM=$TERM PS1='\u:\w\$ ' /bin/bash
+exec env -i HOME=$HOME TERM=$TERM PS1='\u:\W\$ ' /bin/bash
 EOF
 
 #Use tee as root
 << EOF
         cat << EOF | sudo tee /home/lfs/.bash_profile 
-exec env -i HOME=$HOME TERM=$TERM PS1='\u:\w\$ ' /bin/bash
+exec env -i HOME=$HOME TERM=$TERM PS1='\u:\W\$ ' /bin/bash
 EOF
 
 #Use bash as root
 << EOF
         sudo bash -c "cat << EOF > /home/lfs/.bash_profile
-exec env -i HOME=$HOME TERM=$TERM PS1='\u:\w\$ ' /bin/bash
+exec env -i HOME=$HOME TERM=$TERM PS1='\u:\W\$ ' /bin/bash
 EOF"
 EOF
 
 #Use bash as root
 #<<EOF
         sudo bash -c "cat > /home/lfs/.bash_profile" << EOF 
-exec env -i HOME=$HOME TERM=$TERM PS1='\u:\w\$ ' /bin/bash
+exec env -i HOME=$HOME TERM=$TERM PS1='\u:\W\$ ' /bin/bash
 EOF
 
         sudo bash -c "cat > /home/lfs/.bashrc" << EOF
 set +h
 umask 022
+PS1='\u:\W\$ '
 LFS=/mnt/lfs
 LC_ALL=POSIX
 LFS_TGT=$(uname -m)-lfs-linux-gnu
@@ -62,6 +63,12 @@ EOF
         #sudo chmod -v a+wt $LFS/sources
 
         #sudo chown -vR $LFS
+}
+
+function del_user()
+{
+	sudo userdel -r lfs
+	sudo groupdel lfs
 }
 
 #end
