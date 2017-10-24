@@ -9,24 +9,6 @@ fi
 
 source $PWD/module_env.sh
 
-<<EOF
-SOURCE_TAR=$PWD/source_tars
-TOOLS_SRC=$PWD/tools_srcs
-SYSTEM_SRC=$PWD/system_srcs
-TOOLS_INSTALL=$(dirname $PWD)/tools
-SYSTEM_INSTALL=$(dirname $PWD)/system
-#BUILD_INSTALL=$(dirname $PWD)/build
-BUILD_INSTALL=$PWD
-ROOTFS=$SYSTEM_INSTALL
-
-MAKE_DOC=no
-MAKE_CHECK=no
-MAKE_FLAGS=-j4
-
-LFS_TGT=$(uname -m)-lfs-linux-gnu
-EOF
-
-
 function make_tools_binutils_1st()
 {
 	app=binutils-2.25
@@ -34,12 +16,11 @@ function make_tools_binutils_1st()
 	src=$TOOLS_SRC/$app-1st
 	build=$TOOLS_SRC/$app-1st-build
 
-	if [ -f $build/$buld-done ]; then
-		echo "$build build already done"
-		sleep 1
+	if [ -f $build/$app-done ]; then
+		echo "$FUNCNAME build already done"
 		return
 	else
-		rm -vrf $rsc
+		rm -vrf $src
 		rm -vrf $build
 	fi
 
@@ -73,7 +54,7 @@ function make_tools_binutils_1st()
 	fi
 	cd -
 
-	touch $build/$build-done
+	touch $build/$app-done
 }
 
 function make_tools_binutils_2nd()
@@ -83,8 +64,12 @@ function make_tools_binutils_2nd()
 	src=$TOOLS_SRC/$app-2nd
 	build=$TOOLS_SRC/$app-2nd-build
 
-	if [ -d $build ]; then
+	if [ -f $build/$app-done ]; then
+		echo "$FUNCNAME build already done"
 		return
+	else
+		rm -vrf $src
+		rm -vrf $build
 	fi
 
 	if [ ! -d $src ]; then
@@ -124,6 +109,7 @@ function make_tools_binutils_2nd()
 	cp -v ld/ld-new /tools/bin
 
 	cd -
+	touch $build/$app-done
 }
 
 function make_tools_gcc_1st()
@@ -133,10 +119,12 @@ function make_tools_gcc_1st()
 	src=$TOOLS_SRC/$app-1st
 	build=$TOOLS_SRC/$app-1st-build
 
-	if [ -f $build ]; then
-		echo "$build build already done"
-		sleep 1
+	if [ -f $build/$app-done ]; then
+		echo "$FUNCNAME build already done"
 		return
+	else
+		rm -vrf $src
+		rm -vrf $build
 	fi
 
 	if [ ! -d $src ]; then
@@ -211,6 +199,7 @@ function make_tools_gcc_1st()
 		echo fail; exit
 	fi
 	cd -
+	touch $build/$app-done
 }
 
 function make_tools_gcc_2nd()
@@ -220,8 +209,12 @@ function make_tools_gcc_2nd()
 	src=$TOOLS_SRC/$app-2nd
 	build=$TOOLS_SRC/$app-2nd-build
 
-	if [ -d $build ]; then
+	if [ -f $build/$app-done ]; then
+		echo "$FUNCNAME build already done"
 		return
+	else
+		rm -vrf $src
+		rm -vrf $build
 	fi
 
 	if [ ! -d $src ]; then
@@ -289,12 +282,18 @@ function make_tools_gcc_2nd()
 	fi
 	sudo bash -c "sed 's/tools/usr/' /tools/lib/libstdc++.la > $ROOTFS/usr/lib/libstdc++.la"
 	ln -sv gcc /tools/bin/cc
+
 	# Test
 	echo 'main(){}' > dummy.c
 	cc dummy.c
 	readelf -l a.out | grep ': /tools'
+	if [ $? != 0 ]; then
+		echo fail; exit
+	fi
 	rm -v dummy.c a.out
+
 	cd -
+	touch $build/$app-done
 }
 
 function make_tools_libstdcxx()
@@ -304,9 +303,12 @@ function make_tools_libstdcxx()
 	src=$TOOLS_SRC/$app-libstdcxx
 	build=$TOOLS_SRC/$app-libstdcxx-build
 
-	if [ -d $build ]; then
-		echo "$build already done"
+	if [ -f $build/$app-done ]; then
+		echo "$FUNCNAME build already done"
 		return
+	else
+		rm -vrf $src
+		rm -vrf $build
 	fi
 
 	if [ ! -d $src ]; then
@@ -340,6 +342,7 @@ function make_tools_libstdcxx()
 		echo fail; exit
 	fi
 	cd -
+	touch $build/$app-done
 }
 
 function make_tools_kernel_headers()
@@ -347,11 +350,14 @@ function make_tools_kernel_headers()
 	app=linux-3.19
 	tar=$SOURCE_TAR/$app.tar.xz
 	src=$TOOLS_SRC/$app
+	build=$TOOLS_SRC/$app
 
-	if [ -d $src ]; then
-		echo "$src build already done"
-		sleep 1
+	if [ -f $build/$app-done ]; then
+		echo "$FUNCNAME build already done"
 		return
+	else
+		rm -vrf $src
+		rm -vrf $build
 	fi
 
 	if [ ! -d $src ]; then
@@ -367,8 +373,9 @@ function make_tools_kernel_headers()
 	if [ $? != 0 ]; then
 		echo fail; exit
 	fi
-	cp -v dest/include/* /tools/include
+	mv -v dest/include/* /tools/include
 	cd -
+	touch $build/$app-done
 }
 
 function make_tools_glibc()
@@ -378,10 +385,12 @@ function make_tools_glibc()
 	src=$TOOLS_SRC/$app
 	build=$TOOLS_SRC/$app-build
 
-	if [ -d $build ]; then
-		echo "$build build already done"
-		sleep 1
+	if [ -f $build/$app-done ]; then
+		echo "$FUNCNAME build already done"
 		return
+	else
+		rm -vrf $src
+		rm -vrf $build
 	fi
 
 	if [ ! -d $src ]; then
@@ -429,7 +438,12 @@ function make_tools_glibc()
 	echo 'main(){}' > dummy.c
 	$LFS_TGT-gcc dummy.c
 	readelf -l a.out | grep ': /tools'
+	if [ $? != 0 ]; then
+		echo fail; exit
+	fi
 	rm -v dummy.c a.out
+	
+	touch $build/$app-done
 }
 
 function make_tools_tcl()
@@ -438,6 +452,14 @@ function make_tools_tcl()
 	tar=$SOURCE_TAR/$app-src.tar.gz
 	src=$TOOLS_SRC/$app
 	build=$TOOLS_SRC/$app/unix
+
+	if [ -f $build/$app-done ]; then
+		echo "$FUNCNAME build already done"
+		return
+	else
+		rm -vrf $src
+		rm -vrf $build
+	fi
 
 	if [ ! -d $src ]; then
 		tar -xvf $tar -C $TOOLS_SRC
@@ -469,6 +491,7 @@ function make_tools_tcl()
 	fi
 	ln -sv tclsh8.6 /tools/bin/tclsh
 	cd -
+	touch $build/$app-done
 }
 
 function make_tools_expect()
@@ -477,6 +500,14 @@ function make_tools_expect()
 	tar=$SOURCE_TAR/$app.tar.gz
 	src=$TOOLS_SRC/$app
 	build=$TOOLS_SRC/$app
+
+	if [ -f $build/$app-done ]; then
+		echo "$FUNCNAME build already done"
+		return
+	else
+		rm -vrf $src
+		rm -vrf $build
+	fi
 
 	if [ ! -d $src ]; then
 		tar -xvf $tar -C $TOOLS_SRC
@@ -508,6 +539,7 @@ function make_tools_expect()
 		echo fail; exit
 	fi
 	cd -
+	touch $build/$app-done
 }
 
 function make_tools_dejagnu()
@@ -516,6 +548,14 @@ function make_tools_dejagnu()
 	tar=$SOURCE_TAR/$app.tar.gz
 	src=$TOOLS_SRC/$app
 	build=$TOOLS_SRC/$app
+
+	if [ -f $build/$app-done ]; then
+		echo "$FUNCNAME build already done"
+		return
+	else
+		rm -vrf $src
+		rm -vrf $build
+	fi
 
 	if [ ! -d $src ]; then
 		tar -xvf $tar -C $TOOLS_SRC
@@ -537,6 +577,7 @@ function make_tools_dejagnu()
 		fi
 	fi
 	cd -
+	touch $build/$app-done
 }
 
 function make_tools_check()
@@ -545,6 +586,14 @@ function make_tools_check()
 	tar=$SOURCE_TAR/$app.tar.gz
 	src=$TOOLS_SRC/$app
 	build=$TOOLS_SRC/$app
+
+	if [ -f $build/$app-done ]; then
+		echo "$FUNCNAME build already done"
+		return
+	else
+		rm -vrf $src
+		rm -vrf $build
+	fi
 
 	if [ ! -d $src ]; then
 		tar -xvf $tar -C $TOOLS_SRC
@@ -570,6 +619,7 @@ function make_tools_check()
 		echo fail; exit
 	fi
 	cd -
+	touch $build/$app-done
 }
 
 function make_tools_ncurses()
@@ -578,6 +628,14 @@ function make_tools_ncurses()
 	tar=$SOURCE_TAR/$app.tar.gz
 	src=$TOOLS_SRC/$app
 	build=$TOOLS_SRC/$app
+
+	if [ -f $build/$app-done ]; then
+		echo "$FUNCNAME build already done"
+		return
+	else
+		rm -vrf $src
+		rm -vrf $build
+	fi
 
 	if [ ! -d $src ]; then
 		tar -xvf $tar -C $TOOLS_SRC
@@ -602,6 +660,7 @@ function make_tools_ncurses()
 		echo fail; exit
 	fi
 	cd -
+	touch $build/$app-done
 }
 
 function make_tools_bash()
@@ -610,6 +669,14 @@ function make_tools_bash()
 	tar=$SOURCE_TAR/$app.tar.gz
 	src=$TOOLS_SRC/$app
 	build=$TOOLS_SRC/$app
+
+	if [ -f $build/$app-done ]; then
+		echo "$FUNCNAME build already done"
+		return
+	else
+		rm -vrf $src
+		rm -vrf $build
+	fi
 
 	if [ ! -d $src ]; then
 		tar -xvf $tar -C $TOOLS_SRC
@@ -636,6 +703,7 @@ function make_tools_bash()
 	fi
 	ln -sv bash /tools/bin/sh
 	cd -
+	touch $build/$app-done
 }
 
 function make_tools_bzip2()
@@ -644,6 +712,14 @@ function make_tools_bzip2()
 	tar=$SOURCE_TAR/$app.tar.gz
 	src=$TOOLS_SRC/$app
 	build=$TOOLS_SRC/$app
+
+	if [ -f $build/$app-done ]; then
+		echo "$FUNCNAME build already done"
+		return
+	else
+		rm -vrf $src
+		rm -vrf $build
+	fi
 
 	if [ ! -d $src ]; then
 		tar -xvf $tar -C $TOOLS_SRC
@@ -659,6 +735,7 @@ function make_tools_bzip2()
 		echo fail; exit
 	fi
 	cd -
+	touch $build/$app-done
 }
 
 function make_tools_coreutils()
@@ -667,6 +744,14 @@ function make_tools_coreutils()
 	tar=$SOURCE_TAR/$app.tar.xz
 	src=$TOOLS_SRC/$app
 	build=$TOOLS_SRC/$app
+
+	if [ -f $build/$app-done ]; then
+		echo "$FUNCNAME build already done"
+		return
+	else
+		rm -vrf $src
+		rm -vrf $build
+	fi
 
 	if [ ! -d $src ]; then
 		tar -xvf $tar -C $TOOLS_SRC
@@ -692,6 +777,7 @@ function make_tools_coreutils()
 		echo fail; exit
 	fi
 	cd -
+	touch $build/$app-done
 }
 
 function make_tools_diffutils()
@@ -701,6 +787,14 @@ function make_tools_diffutils()
 	src=$TOOLS_SRC/$app
 	build=$TOOLS_SRC/$app
 
+	if [ -f $build/$app-done ]; then
+		echo "$FUNCNAME build already done"
+		return
+	else
+		rm -vrf $src
+		rm -vrf $build
+	fi
+
 	if [ ! -d $src ]; then
 		tar -xvf $tar -C $TOOLS_SRC
 	fi
@@ -725,6 +819,7 @@ function make_tools_diffutils()
 		echo fail; exit
 	fi
 	cd -
+	touch $build/$app-done
 }
 
 function make_tools_file()
@@ -734,6 +829,14 @@ function make_tools_file()
 	src=$TOOLS_SRC/$app
 	build=$TOOLS_SRC/$app
 
+	if [ -f $build/$app-done ]; then
+		echo "$FUNCNAME build already done"
+		return
+	else
+		rm -vrf $src
+		rm -vrf $build
+	fi
+
 	if [ ! -d $src ]; then
 		tar -xvf $tar -C $TOOLS_SRC
 	fi
@@ -758,6 +861,7 @@ function make_tools_file()
 		echo fail; exit
 	fi
 	cd -
+	touch $build/$app-done
 }
 
 function make_tools_findutils()
@@ -767,6 +871,14 @@ function make_tools_findutils()
 	src=$TOOLS_SRC/$app
 	build=$TOOLS_SRC/$app
 
+	if [ -f $build/$app-done ]; then
+		echo "$FUNCNAME build already done"
+		return
+	else
+		rm -vrf $src
+		rm -vrf $build
+	fi
+
 	if [ ! -d $src ]; then
 		tar -xvf $tar -C $TOOLS_SRC
 	fi
@@ -791,6 +903,7 @@ function make_tools_findutils()
 		echo fail; exit
 	fi
 	cd -
+	touch $build/$app-done
 }
 
 function make_tools_gawk()
@@ -800,6 +913,14 @@ function make_tools_gawk()
 	src=$TOOLS_SRC/$app
 	build=$TOOLS_SRC/$app
 
+	if [ -f $build/$app-done ]; then
+		echo "$FUNCNAME build already done"
+		return
+	else
+		rm -vrf $src
+		rm -vrf $build
+	fi
+
 	if [ ! -d $src ]; then
 		tar -xvf $tar -C $TOOLS_SRC
 	fi
@@ -824,6 +945,7 @@ function make_tools_gawk()
 		echo fail; exit
 	fi
 	cd -
+	touch $build/$app-done
 }
 
 function make_tools_gettext()
@@ -832,6 +954,14 @@ function make_tools_gettext()
 	tar=$SOURCE_TAR/$app.tar.xz
 	src=$TOOLS_SRC/$app
 	build=$TOOLS_SRC/$app
+
+	if [ -f $build/$app-done ]; then
+		echo "$FUNCNAME build already done"
+		return
+	else
+		rm -vrf $src
+		rm -vrf $build
+	fi
 
 	if [ ! -d $src ]; then
 		tar -xvf $tar -C $TOOLS_SRC
@@ -852,6 +982,7 @@ function make_tools_gettext()
 	fi
 	cp -v src/{msgfmt,msgmerge,xgettext} /tools/bin
 	cd -
+	touch $build/$app-done
 }
 
 function make_tools_grep()
@@ -861,6 +992,14 @@ function make_tools_grep()
 	src=$TOOLS_SRC/$app
 	build=$TOOLS_SRC/$app
 
+	if [ -f $build/$app-done ]; then
+		echo "$FUNCNAME build already done"
+		return
+	else
+		rm -vrf $src
+		rm -vrf $build
+	fi
+
 	if [ ! -d $src ]; then
 		tar -xvf $tar -C $TOOLS_SRC
 	fi
@@ -885,6 +1024,7 @@ function make_tools_grep()
 		echo fail; exit
 	fi
 	cd -
+	touch $build/$app-done
 }
 
 function make_tools_gzip()
@@ -894,6 +1034,14 @@ function make_tools_gzip()
 	src=$TOOLS_SRC/$app
 	build=$TOOLS_SRC/$app
 
+	if [ -f $build/$app-done ]; then
+		echo "$FUNCNAME build already done"
+		return
+	else
+		rm -vrf $src
+		rm -vrf $build
+	fi
+
 	if [ ! -d $src ]; then
 		tar -xvf $tar -C $TOOLS_SRC
 	fi
@@ -918,6 +1066,7 @@ function make_tools_gzip()
 		echo fail; exit
 	fi
 	cd -
+	touch $build/$app-done
 }
 
 function make_tools_m4()
@@ -927,6 +1076,14 @@ function make_tools_m4()
 	src=$TOOLS_SRC/$app
 	build=$TOOLS_SRC/$app
 
+	if [ -f $build/$app-done ]; then
+		echo "$FUNCNAME build already done"
+		return
+	else
+		rm -vrf $src
+		rm -vrf $build
+	fi
+
 	if [ ! -d $src ]; then
 		tar -xvf $tar -C $TOOLS_SRC
 	fi
@@ -951,6 +1108,7 @@ function make_tools_m4()
 		echo fail; exit
 	fi
 	cd -
+	touch $build/$app-done
 }
 
 function make_tools_make()
@@ -960,6 +1118,14 @@ function make_tools_make()
 	src=$TOOLS_SRC/$app
 	build=$TOOLS_SRC/$app
 
+	if [ -f $build/$app-done ]; then
+		echo "$FUNCNAME build already done"
+		return
+	else
+		rm -vrf $src
+		rm -vrf $build
+	fi
+
 	if [ ! -d $src ]; then
 		tar -xvf $tar -C $TOOLS_SRC
 	fi
@@ -984,6 +1150,7 @@ function make_tools_make()
 		echo fail; exit
 	fi
 	cd -
+	touch $build/$app-done
 }
 
 function make_tools_patch()
@@ -993,6 +1160,14 @@ function make_tools_patch()
 	src=$TOOLS_SRC/$app
 	build=$TOOLS_SRC/$app
 
+	if [ -f $build/$app-done ]; then
+		echo "$FUNCNAME build already done"
+		return
+	else
+		rm -vrf $src
+		rm -vrf $build
+	fi
+
 	if [ ! -d $src ]; then
 		tar -xvf $tar -C $TOOLS_SRC
 	fi
@@ -1017,6 +1192,7 @@ function make_tools_patch()
 		echo fail; exit
 	fi
 	cd -
+	touch $build/$app-done
 }
 
 function make_tools_perl()
@@ -1025,6 +1201,14 @@ function make_tools_perl()
 	tar=$SOURCE_TAR/$app.tar.bz2
 	src=$TOOLS_SRC/$app
 	build=$TOOLS_SRC/$app
+
+	if [ -f $build/$app-done ]; then
+		echo "$FUNCNAME build already done"
+		return
+	else
+		rm -vrf $src
+		rm -vrf $build
+	fi
 
 	if [ ! -d $src ]; then
 		tar -xvf $tar -C $TOOLS_SRC
@@ -1043,6 +1227,7 @@ function make_tools_perl()
 	mkdir -pv /tools/lib/perl5/5.20.2
 	cp -Rv lib/* /tools/lib/perl5/5.20.2
 	cd -
+	touch $build/$app-done
 }
 
 function make_tools_sed()
@@ -1052,6 +1237,14 @@ function make_tools_sed()
 	src=$TOOLS_SRC/$app
 	build=$TOOLS_SRC/$app
 
+	if [ -f $build/$app-done ]; then
+		echo "$FUNCNAME build already done"
+		return
+	else
+		rm -vrf $src
+		rm -vrf $build
+	fi
+
 	if [ ! -d $src ]; then
 		tar -xvf $tar -C $TOOLS_SRC
 	fi
@@ -1076,6 +1269,7 @@ function make_tools_sed()
 		echo fail; exit
 	fi
 	cd -
+	touch $build/$app-done
 }
 
 function make_tools_tar()
@@ -1085,6 +1279,14 @@ function make_tools_tar()
 	src=$TOOLS_SRC/$app
 	build=$TOOLS_SRC/$app
 
+	if [ -f $build/$app-done ]; then
+		echo "$FUNCNAME build already done"
+		return
+	else
+		rm -vrf $src
+		rm -vrf $build
+	fi
+
 	if [ ! -d $src ]; then
 		tar -xvf $tar -C $TOOLS_SRC
 	fi
@@ -1109,6 +1311,7 @@ function make_tools_tar()
 		echo fail; exit
 	fi
 	cd -
+	touch $build/$app-done
 }
 
 function make_tools_texinfo()
@@ -1118,6 +1321,14 @@ function make_tools_texinfo()
 	src=$TOOLS_SRC/$app
 	build=$TOOLS_SRC/$app
 
+	if [ -f $build/$app-done ]; then
+		echo "$FUNCNAME build already done"
+		return
+	else
+		rm -vrf $src
+		rm -vrf $build
+	fi
+
 	if [ ! -d $src ]; then
 		tar -xvf $tar -C $TOOLS_SRC
 	fi
@@ -1142,6 +1353,7 @@ function make_tools_texinfo()
 		echo fail; exit
 	fi
 	cd -
+	touch $build/$app-done
 }
 
 function make_tools_util_linux()
@@ -1150,6 +1362,14 @@ function make_tools_util_linux()
 	tar=$SOURCE_TAR/$app.tar.xz
 	src=$TOOLS_SRC/$app
 	build=$TOOLS_SRC/$app
+
+	if [ -f $build/$app-done ]; then
+		echo "$FUNCNAME build already done"
+		return
+	else
+		rm -vrf $src
+		rm -vrf $build
+	fi
 
 	if [ ! -d $src ]; then
 		tar -xvf $tar -C $TOOLS_SRC
@@ -1173,6 +1393,7 @@ function make_tools_util_linux()
 		echo fail; exit
 	fi
 	cd -
+	touch $build/$app-done
 }
 
 function make_tools_xz()
@@ -1181,6 +1402,14 @@ function make_tools_xz()
 	tar=$SOURCE_TAR/$app.tar.xz
 	src=$TOOLS_SRC/$app
 	build=$TOOLS_SRC/$app
+
+	if [ -f $build/$app-done ]; then
+		echo "$FUNCNAME build already done"
+		return
+	else
+		rm -vrf $src
+		rm -vrf $build
+	fi
 
 	if [ ! -d $src ]; then
 		tar -xvf $tar -C $TOOLS_SRC
@@ -1206,6 +1435,7 @@ function make_tools_xz()
 		echo fail; exit
 	fi
 	cd -
+	touch $build/$app-done
 }
 
 function make_tools_strip()
@@ -1274,12 +1504,12 @@ function make_tools_clean()
 
 function make_tools()
 {
-#	make_tools_init
+	make_tools_init
 
-#	make_tools_binutils_1st
-#	make_tools_gcc_1st
-#	make_tools_kernel_headers
-#	make_tools_glibc
+	make_tools_binutils_1st
+	make_tools_gcc_1st
+	make_tools_kernel_headers
+	make_tools_glibc
 	make_tools_libstdcxx
 
 	make_tools_binutils_2nd
