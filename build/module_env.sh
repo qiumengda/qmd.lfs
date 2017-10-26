@@ -7,13 +7,13 @@ else
 	__MODULE_ENV__=yes
 fi
 
-SOURCE_TAR=$(dirname $PWD)/packages
-TOOLS_SRC=$PWD/tools_srcs
-SYSTEM_SRC=$PWD/system_srcs
-TOOLS_INSTALL=$(dirname $PWD)/tools
-SYSTEM_INSTALL=$(dirname $PWD)/system
-# BUILD_INSTALL=$(dirname $PWD)/build
-BUILD_INSTALL=$PWD
+TOP=$(dirname $PWD)
+SOURCE_TAR=$TOP/packages
+BUILD_INSTALL=$TOP/build
+SYSTEM_INSTALL=$TOP/system
+TOOLS_INSTALL=$TOP/tools
+TOOLS_SRC=$BUILD_INSTALL/tools_srcs
+SYSTEM_SRC=$BUILD_INSTALL/system_srcs
 ROOTFS=$SYSTEM_INSTALL
 
 MAKE_DOC=no

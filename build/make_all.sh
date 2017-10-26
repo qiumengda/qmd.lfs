@@ -1,18 +1,22 @@
 #!/bin/sh
 
 source $PWD/module_env.sh
-source $PWD/module_add_user.sh
+source $PWD/module_user.sh
 source $PWD/module_build_tools.sh
 source $PWD/module_init_rootfs.sh
 
 function _clean()
 {
 	make_tools_clean
-
+	dirs_umount
+	rootfs_clean
 }
 
 function _build()
 {
+	rootfs_init
+	dirs_mount
+
 	make_tools
 	# init_rootfs
 	# mount_dirs
@@ -28,24 +32,21 @@ function _strip()
 
 function main()
 {
+	if [ "$1" == "adduser" ]; then
+		if [ `whoami` == lfs ]; then
+			echo "lfs is already running"
+			return
+		fi
+
+		del_user
+		add_user
+	fi
+
 	if [ `whoami` != lfs ]; then
-		if [ "$1" == "adduser" ]; then
-			if [ -d /home/lfs ]; then
-				echo "Delete user lfs"
-				del_user
-			fi
-			
-			echo "Add user lfs"			
-			add_user
-		fi
-
-		if [ -d /home/lfs ]; then
-			echo "Please su lfs and build"
-		else
-			echo "Please adduser lfs and build"
-		fi
-
-		exit
+		# su - lfs 
+		echo "su lfs -c $0 $1"
+		su lfs -c "$0 $1"
+		return
 	fi
 
 	case "$1" in
@@ -63,11 +64,12 @@ function main()
 		;;
 	esac
 
-	exit
+	return
 	# Stage 1: User is qmd
 	# Stage 2: User is lfs
 	# Stage 3: User is root
 }
 
-main $1
-
+date
+time main $1
+date

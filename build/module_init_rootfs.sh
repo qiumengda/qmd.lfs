@@ -12,11 +12,14 @@ source $PWD/module_env.sh
 function rootfs_clean()
 {
 	echo "rm $ROOTFS"
-	rm -rf $ROOTFS
+	sudo rm -rf $ROOTFS
 }
 
 function rootfs_init()
 {
+	sudo chown lfs:lfs $TOP
+	sudo chown lfs:lfs $BUILD_INSTALL
+
 	if [ ! -d $ROOTFS ]; then
 		mkdir -v $ROOTFS
 	fi   
