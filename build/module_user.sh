@@ -7,8 +7,9 @@ else
         __MODULE_ADD_USER__=yes
 fi
 
-function add_user()
+function add_lfs_user()
 {
+	print_title "Add lfs user and group"
         sudo groupadd lfs
         sudo useradd -s /bin/bash -g lfs -m -k /dev/null lfs
         sudo passwd lfs
@@ -57,6 +58,13 @@ alias ls='ls --color=auto'
 alias grep='grep --color=auto'
 EOF
 
+	sudo grep -rHn lfs /etc/sudoers
+	if [ $? != 0 ]; then
+		sudo bash -c "cat >> /etc/sudoers" << EOF 
+lfs ALL=(ALL) ALL
+EOF
+	fi
+
         #su - lfs
         #source /home/lfs/.bash_profile
         #sudo swapon -v /dev/sdb2
@@ -65,10 +73,22 @@ EOF
         #sudo chown -vR $LFS
 }
 
-function del_user()
+function del_lfs_user()
 {
+	print_title "Delelte lfs user and group"
 	sudo userdel -r lfs
 	sudo groupdel lfs
+}
+
+function chown_lfs_user()
+{
+	print_title "Change files owner to lfs"
+	sudo chown -v lfs:lfs $TOP
+	sudo chown -v lfs:lfs $BUILD_INSTALL
+	sudo chown -v lfs:lfs $BUILD_INSTALL/*.sh
+	sudo chmod -v 777 $BUILD_INSTALL/*.sh
+	sudo chown -v lfs:lfs $BUILD_INSTALL/kernel_config*
+	sudo chown -vR lfs:lfs $SOURCE_TAR
 }
 
 #end

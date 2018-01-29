@@ -27,25 +27,31 @@ function _build()
 function _strip()
 {
 	make_tools_strip
+}
 
+function _env()
+{
+	install_build_tools
 }
 
 function main()
 {
-	if [ "$1" == "adduser" ]; then
+	if [ "$1" == "create_lfs_user" ]; then
 		if [ `whoami` == lfs ]; then
-			echo "lfs is already running"
+			echo "You are lfs already"
 			return
 		fi
 
-		del_user
-		add_user
+		del_lfs_user
+		add_lfs_user
+		chown_lfs_user
+		return
 	fi
 
 	if [ `whoami` != lfs ]; then
-		# su - lfs 
-		echo "su lfs -c $0 $1"
-		su lfs -c "$0 $1"
+		echo "> Please su to lfs and run"
+		echo "> Use $0 create_lfs_user to add lfs user"
+		# su lfs -c "$0 $1"
 		return
 	fi
 
@@ -59,6 +65,9 @@ function main()
 	"strip")
 		_strip
 		;;
+	"env")
+		_env
+		;;
 	*)
 		echo "$0 clean|build|strip"
 		;;
@@ -70,6 +79,9 @@ function main()
 	# Stage 3: User is root
 }
 
-date
+start=`date`
 time main $1
-date
+end=`date`
+
+echo -e "$start Start"
+echo -e "$end End"
