@@ -8,12 +8,15 @@ else
 fi
 
 TOP=$(dirname $PWD)
-SOURCE_TAR=$TOP/packages
+SOURCE_INSTALL=$TOP/packages
 BUILD_INSTALL=$TOP/build
 SYSTEM_INSTALL=$TOP/system
 TOOLS_INSTALL=$TOP/tools
+
+SOURCE_TAR=$SOURCE_INSTALL
 TOOLS_SRC=$BUILD_INSTALL/tools_srcs
 SYSTEM_SRC=$BUILD_INSTALL/system_srcs
+
 ROOTFS=$SYSTEM_INSTALL
 
 MAKE_DOC=no
@@ -28,17 +31,11 @@ function print_env()
 	echo -e "Env status:"
 }
 
-function print_usage()
-{
-	echo -e "Usage:"
-}
-
 function print_title()
 {
 	echo -e "#####################################"
 	echo -e "## $1"
 	echo -e "#####################################"
-	sleep 1
 }
 
 function install_build_tools()
@@ -46,6 +43,16 @@ function install_build_tools()
 	sudo apt-get install texinfo #For makeinfo
 	sudo apt-get install build-essential #For g++
 	sudo apt-get install gawk #For gawk
+}
+
+function check_user()
+{
+	if [ `whoami` != $1 ]; then
+		echo "Error: Please su to $1 and run"
+		echo "Error: Use $0 create_lfs_user to add lfs user"
+		# su lfs -c "$0 $1"
+		return
+	fi 
 }
 
 function check_build_done()

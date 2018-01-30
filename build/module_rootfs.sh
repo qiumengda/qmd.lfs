@@ -9,13 +9,13 @@ fi
 
 source $PWD/module_env.sh
 
-function rootfs_clean()
+function clean_rootfs()
 {
 	echo "rm $ROOTFS"
 	sudo rm -rf $ROOTFS
 }
 
-function rootfs_init()
+function init_rootfs()
 {
 	sudo chown lfs:lfs $TOP
 	sudo chown lfs:lfs $BUILD_INSTALL
@@ -30,6 +30,10 @@ function rootfs_init()
 
 	if [ ! -d $ROOTFS/tools ]; then 
 		mkdir -v $ROOTFS/tools
+	fi 
+
+	if [ ! -d $ROOTFS/packages ]; then 
+		mkdir -v $ROOTFS/packages
 	fi 
 
 	cd $ROOTFS
@@ -130,9 +134,9 @@ EOF
 	cd -
 }
 
-function dirs_umount()
+function umount_dirs()
 {
-	for dir in $ROOTFS/build $ROOTFS/tools; do
+	for dir in $ROOTFS/build $ROOTFS/tools $ROOTFS/packages ; do
 		if grep -q "$dir" /proc/mounts; then
 			printf "%-32s umount\n" $dir
 			sudo umount -v $dir
@@ -142,7 +146,7 @@ function dirs_umount()
 	done
 }
 
-function dirs_mount()
+function mount_dirs()
 {
 	if [ ! -d $BUILD_INSTALL ]; then
 		mkdir -v $BUILD_INSTALL
@@ -152,7 +156,11 @@ function dirs_mount()
 		mkdir -v $TOOLS_INSTALL
 	fi
 
-	for dir in $ROOTFS/build $ROOTFS/tools; do
+	if [ ! -d $SOURCE_INSTALL ]; then
+		mkdir -v $SOURCE_INSTALL
+	fi
+
+	for dir in $ROOTFS/build $ROOTFS/tools $ROOTFS/packages ; do
 		if grep -q "$dir" /proc/mounts; then
 			printf "%-32s already mounted\n" $dir
 			continue
@@ -170,32 +178,33 @@ function dirs_mount()
 		"$ROOTFS/tools")
 			sudo mount -v --bind $TOOLS_INSTALL $dir
 			;;
+		"$ROOTFS/packages")
+			sudo mount -v --bind $SOURCE_INSTALL $dir
+			;;
 		esac
+	done
+}
+
+function umount_memfs()
+{
+	list="$ROOTFS/dev/pts $ROOTFS/dev $ROOTFS/proc $ROOTFS/sys $ROOTFS/run"
+
+	for dir in $list;
+	do
+		if grep -q "$dir" /proc/mounts; then
+			sudo umount -v $dir
+		else
+			printf "%-32s already umounted\n" $dir
+		fi
 	done
 }
 
 function mount_memfs()
 {
-	mount_list="$ROOTFS/dev $ROOTFS/dev/pts $ROOTFS/proc $ROOTFS/sys $ROOTFS/run"
-	umount_list="$ROOTFS/dev/pts $ROOTFS/dev $ROOTFS/proc $ROOTFS/sys $ROOTFS/run"
-
-	if [ "$1" == "clean" ]; then
-		list=$umount_list
-	else
-		list=$mount_list
-	fi
+	list="$ROOTFS/dev $ROOTFS/dev/pts $ROOTFS/proc $ROOTFS/sys $ROOTFS/run"
 
 	for dir in $list;
 	do
-		if [ "$1" == "clean" ]; then
-			if grep -q "$dir" /proc/mounts; then
-				sudo umount -v $dir
-			else
-				printf "%-32s already umounted\n" $dir
-			fi
-			continue
-		fi
-
 		if grep -q "$dir" /proc/mounts; then
 			printf "%-32s already mounted\n" $dir
 			continue
@@ -235,14 +244,6 @@ function mount_memfs()
 
 function change_root()
 {
-	if [ "$1" == "mount" ]; then
-		mount_memfs
-		exit
-	elif [ "$1" == "umount" ]; then
-		mount_memfs clean
-		exit
-	fi
-
 	sudo chroot "$ROOTFS" /tools/bin/env -i  \
 		HOME=/root                    \
 		TERM="$TERM"                  \

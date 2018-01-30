@@ -1490,7 +1490,7 @@ function make_tools_init()
         fi
 }
 
-function make_tools_clean()
+function clean_tools()
 {
 	echo "rm $TOOLS_SRC"
         rm -rf $TOOLS_SRC
